@@ -15,6 +15,7 @@ import Link from "next/link";
 import { clearStored, loadStored, saveStored } from "@/lib/local-store";
 import { DEMO_STATEMENTS } from "@/lib/demo";
 import { Referrals } from "@/components/Referrals";
+import { ReferralBanner } from "@/components/ReferralBanner";
 import { AdSlot } from "@/components/AdSlot";
 
 // TrueBasis — upload a brokerage activity statement, see per stock how much
@@ -570,6 +571,8 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      <ReferralBanner />
 
       {/* Summary */}
       {report && report.tickers.length > 0 && totals && (
