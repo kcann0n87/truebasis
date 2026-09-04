@@ -182,31 +182,48 @@ assert.equal(abc.lot.callPremium, 199);
 assert.equal(abc.lot.adjustedAvgCost, (5000 - 299 - 199) / 100);
 console.log("SEED NEXT-DAY PASS");
 
-// ── Robinhood activity report: cash rows ignored, assignment stock leg tagged, rolls, lot window ──
+// ── Robinhood activity report (shapes taken from a real 1,287-row export) ──
 const rh = parseStatementCsv(fx("robinhood.csv"), "robinhood.csv");
 assert.equal(rh.broker, "robinhood");
 assert.equal(rh.periodStart, "2026-03-26");
-assert.equal(rh.trades.length, 9);
+// Multi-line quoted descriptions must not break row parsing: both stock Buys survive.
+const rhStock = rh.trades.filter((t) => t.asset === "stock");
+assert.equal(rhStock.length, 2);
+assert.deepEqual(rhStock.map((t) => t.quantity).sort((a, b) => a - b), [100, 200]);
+// OCA legs (ticker change) contribute no premium.
+assert.equal(rh.trades.filter((t) => t.ticker === "CTLP" || t.ticker === "USAT").length, 0);
+
 const hood = buildReport([rh]).tickers.find((t) => t.ticker === "HOOD")!;
 assert.equal(hood.sharesHeld, 300);
-// 100 bought 6/1 started the lot (so the 7/16 assignment is an add, not a seed)
-assert.equal(hood.lotStart!.slice(0, 10), "2026-06-01");
+assert.equal(hood.lotStart!.slice(0, 10), "2026-06-01"); // the 6/1 buy, not the later assignment
+// The assigned put's premium is folded into the basis, IBKR-style.
 assert.equal(hood.assignedPutPremium, 499.96);
 assert.equal(hood.totalCost, 9500 + 22000 - 499.96);
 assert.equal(hood.stockFills.find((f) => f.quantity === 200)!.isAssignment, true);
 // calls: 149.98 expired + (599.96 − 1200.04) rolled + 819.96 open
 assert.equal(hood.lifetime.callPremium, Math.round((149.98 + 599.96 - 1200.04 + 819.96) * 100) / 100);
-assert.equal(hood.lifetime.putPremium, 499.96);
-assert.equal(hood.lot.putPremium, 0);
-assert.equal(hood.lot.callPremium, hood.lifetime.callPremium);
+assert.equal(hood.lot.putPremium, 0); // it lives in the basis instead
+assert.equal(hood.openCalls, 2);
 const rhLegs = Object.fromEntries(hood.legs.map((l) => [l.key, l.outcome]));
 assert.equal(rhLegs["HOOD|C|100|2026-06-19"], "expired");
 assert.equal(rhLegs["HOOD|P|110|2026-07-16"], "assigned");
 assert.equal(rhLegs["HOOD|C|120|2026-08-21"], "closed");
 assert.equal(rhLegs["HOOD|C|130|2026-09-18"], "open");
 assert.equal(hood.warnings.length, 0, hood.warnings.join("\n"));
-// The real (trade-less) sample shape parses to zero trades without blowing up
-const rhEmpty = parseStatementCsv(fx("robinhood.csv").split("\n").filter((l) => !/HOOD/.test(l)).join("\n"), "x.csv");
+
+// A LONG option expiring worthless closes the long (−3), it is not a short buyback.
+const tslaLong = buildReport([rh]).tickers.find((t) => t.ticker === "TSLA")!;
+const longCall = tslaLong.legs[0];
+assert.equal(longCall.netQty, 0);
+assert.equal(longCall.outcome, "expired");
+assert.equal(longCall.netPremium, -600); // paid $600, expired worthless
+assert.equal(tsla.openCalls, 0);
+
+// A trade-less export (only cash rows) parses to zero trades without blowing up.
+const rhEmpty = parseStatementCsv(
+  fx("robinhood.csv").split("\n").filter((l) => !/(HOOD|TSLA|CTLP|USAT)/.test(l)).join("\n"),
+  "x.csv",
+);
 assert.equal(rhEmpty.broker, "robinhood");
 assert.equal(rhEmpty.trades.length, 0);
 console.log("ROBINHOOD PASS");
