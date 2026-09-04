@@ -1,5 +1,5 @@
-// Broker referral links. Leave a url empty to hide that card. The IBKR link
-// is Kyle's; the others can be set via env:
+// Broker referral links. Leave a url empty to hide that card. The IBKR and
+// Robinhood links are Kyle's; any can be overridden via env:
 //   NEXT_PUBLIC_REF_IBKR, NEXT_PUBLIC_REF_TASTYTRADE, NEXT_PUBLIC_REF_ROBINHOOD
 // (read at build time — redeploy after changing them on Vercel).
 export interface Affiliate {
@@ -25,7 +25,7 @@ export const AFFILIATES: Affiliate[] = [
   {
     id: "robinhood",
     name: "Robinhood",
-    blurb: "Simple covered calls with no per-contract commission.",
-    url: process.env.NEXT_PUBLIC_REF_ROBINHOOD ?? "",
+    blurb: "Simple covered calls with no per-contract commission. Sign up through this link to claim a free stock reward.",
+    url: process.env.NEXT_PUBLIC_REF_ROBINHOOD ?? "https://join.robinhood.com/kylec1454",
   },
 ].filter((a) => a.url);

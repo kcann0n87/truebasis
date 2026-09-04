@@ -39,9 +39,9 @@ Free tool; revenue is referrals and (later) ads.
 
 - **Broker referral links** — `src/lib/affiliates.ts`. The IBKR link is
   built in and shown as a full-width banner under the upload area plus a card
-  at the bottom; override with `NEXT_PUBLIC_REF_IBKR`. Other brokers appear
-  as cards when `NEXT_PUBLIC_REF_TASTYTRADE` / `NEXT_PUBLIC_REF_ROBINHOOD`
-  are set. Disclosure text is built in.
+  at the bottom; the Robinhood link is built in as a card. Override with
+  `NEXT_PUBLIC_REF_IBKR` / `NEXT_PUBLIC_REF_ROBINHOOD`; tastytrade appears
+  when `NEXT_PUBLIC_REF_TASTYTRADE` is set. Disclosure text is built in.
 - **Ad slot** — `src/components/AdSlot.tsx`. Empty until an ad network tag is
   dropped in and `NEXT_PUBLIC_ADS=1` is set. Prefer a privacy-friendly network
   (Carbon, EthicalAds) to keep the "nothing leaves your browser" pitch honest.
