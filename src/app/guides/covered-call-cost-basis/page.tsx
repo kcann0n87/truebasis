@@ -109,7 +109,7 @@ export default function Page() {
         The hard part is not the arithmetic. It is matching hundreds of fills to the right contract, deciding which
         contracts belong to the shares you hold now, and handling the odd cases: partial fills, a call sold before the
         statement you have, a roll that crossed a month boundary. That is exactly what a statement parser is for, and it
-        is why TrueBasis exists. Drop in a statement, expand a stock, and you can see every contract, its outcome, and
+        is why OptionBasis exists. Drop in a statement, expand a stock, and you can see every contract, its outcome, and
         the adjusted basis it produced.
       </p>
     </GuideLayout>

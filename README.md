@@ -1,4 +1,6 @@
-# TrueBasis
+# OptionBasis
+
+Live at https://optionbasis.com
 
 Upload a brokerage activity statement and see, per stock, how much option
 premium you've collected against it and what the shares really cost you after
@@ -57,8 +59,9 @@ the above changes.
 
 ## SEO
 
-- `NEXT_PUBLIC_SITE_URL` (Vercel env) sets canonical URLs, the sitemap and
-  Open Graph URLs — set it to the real domain, no trailing slash.
+- Canonical URLs, the sitemap and Open Graph URLs default to
+  `https://optionbasis.com`. Set `NEXT_PUBLIC_SITE_URL` (no trailing slash)
+  only to override that, e.g. on a preview deploy.
 - `/robots.txt` and `/sitemap.xml` are generated (`src/app/robots.ts`,
   `src/app/sitemap.ts`). Add new guides to `GUIDES` in `src/lib/site.ts` and
   they join the sitemap and the guides index automatically.

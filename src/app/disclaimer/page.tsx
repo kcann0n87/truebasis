@@ -1,14 +1,14 @@
 import Link from "next/link";
 
-export const metadata = { title: "Disclaimer — TrueBasis" };
+export const metadata = { title: "Disclaimer — OptionBasis" };
 
 export default function Disclaimer() {
   return (
     <main className="min-h-screen bg-gray-950 text-gray-200 px-4 sm:px-8 py-8 max-w-3xl mx-auto text-sm leading-relaxed">
-      <Link href="/" className="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 inline-block mb-4">← TrueBasis</Link>
+      <Link href="/" className="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 inline-block mb-4">← OptionBasis</Link>
       <h1 className="text-2xl font-bold text-emerald-400 mb-4">Disclaimer</h1>
       <p className="mb-3">
-        TrueBasis is a calculator, not advice. Nothing on this site is investment, tax, legal or accounting advice, and
+        OptionBasis is a calculator, not advice. Nothing on this site is investment, tax, legal or accounting advice, and
         nothing here is a recommendation to buy, sell or hold any security or to use any options strategy.
       </p>
       <p className="mb-3">

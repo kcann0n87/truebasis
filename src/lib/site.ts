@@ -1,8 +1,7 @@
-// Site-wide constants. Set NEXT_PUBLIC_SITE_URL on Vercel to the real domain
-// (no trailing slash) so canonical URLs, the sitemap and Open Graph tags
-// point at it; the fallback is the free Vercel URL.
-export const SITE_NAME = "TrueBasis";
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://truebasis.vercel.app").replace(/\/$/, "");
+// Site-wide constants. NEXT_PUBLIC_SITE_URL overrides the canonical origin
+// (no trailing slash) for preview deploys; production is optionbasis.com.
+export const SITE_NAME = "OptionBasis";
+export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://optionbasis.com").replace(/\/$/, "");
 export const SITE_DESCRIPTION =
   "Drop in a brokerage activity statement and see, per stock, how much option premium you've collected and what your shares really cost you after it. Runs entirely in your browser — nothing is uploaded.";
 

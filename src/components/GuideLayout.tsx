@@ -34,11 +34,11 @@ export function GuideLayout({ meta, children }: { meta: GuideMeta; children: Rea
         <div className="not-prose mt-10 bg-gray-900 border border-emerald-900/60 rounded-lg px-5 py-4">
           <div className="text-sm font-semibold text-gray-100">Do this on your own statement in one drop</div>
           <div className="text-xs text-gray-400 mt-1">
-            TrueBasis reads an IBKR or Robinhood statement in your browser and works out the adjusted basis, per stock,
+            OptionBasis reads an IBKR or Robinhood statement in your browser and works out the adjusted basis, per stock,
             with every roll, buyback and assignment handled. Nothing is uploaded.
           </div>
           <Link href="/" className="inline-block mt-3 text-xs px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold">
-            Open TrueBasis
+            Open OptionBasis
           </Link>
         </div>
         {related.length > 0 && (
