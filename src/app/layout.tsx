@@ -12,9 +12,12 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: { default: title, template: `%s — ${SITE_NAME}` },
   description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
   alternates: { canonical: "/" },
-  openGraph: { title, description: SITE_DESCRIPTION, type: "website", siteName: SITE_NAME, url: "/" },
-  twitter: { card: "summary", title: SITE_NAME, description: SITE_DESCRIPTION },
+  openGraph: { title, description: SITE_DESCRIPTION, type: "website", siteName: SITE_NAME, url: "/", locale: "en_US" },
+  // We generate a 1200×630 card in app/opengraph-image.tsx, so ask X/Twitter
+  // for the large card rather than the thumbnail-sized default.
+  twitter: { card: "summary_large_image", title, description: SITE_DESCRIPTION },
   robots: {
     index: true,
     follow: true,
@@ -33,24 +36,56 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-// Structured data for the tool itself. Guides add their own Article block.
-const appJsonLd = {
+// Site-wide structured data. One @graph so the WebApplication, the publisher
+// and the site itself are the same three nodes on every page and can be
+// referenced by @id from the per-page blocks (Article, FAQPage, breadcrumbs).
+const siteJsonLd = {
   "@context": "https://schema.org",
-  "@type": "WebApplication",
-  name: SITE_NAME,
-  url: SITE_URL,
-  description: SITE_DESCRIPTION,
-  applicationCategory: "FinanceApplication",
-  operatingSystem: "Any",
-  browserRequirements: "Requires JavaScript",
-  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#organization`,
+      name: SITE_NAME,
+      url: SITE_URL,
+      logo: { "@type": "ImageObject", url: `${SITE_URL}/icon`, width: 32, height: 32 },
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${SITE_URL}/#website`,
+      name: SITE_NAME,
+      url: SITE_URL,
+      description: SITE_DESCRIPTION,
+      inLanguage: "en-US",
+      publisher: { "@id": `${SITE_URL}/#organization` },
+    },
+    {
+      "@type": "WebApplication",
+      "@id": `${SITE_URL}/#app`,
+      name: SITE_NAME,
+      url: SITE_URL,
+      description: SITE_DESCRIPTION,
+      applicationCategory: "FinanceApplication",
+      operatingSystem: "Any",
+      browserRequirements: "Requires JavaScript",
+      isAccessibleForFree: true,
+      publisher: { "@id": `${SITE_URL}/#organization` },
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      featureList: [
+        "Adjusted cost basis after covered-call premium",
+        "Cash-secured put assignment folded into share cost",
+        "Roll tracking across buybacks and new sales",
+        "Interactive Brokers and Robinhood CSV statements",
+        "Runs entirely in the browser — no upload",
+      ],
+    },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(appJsonLd) }} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd) }} />
         {children}
       </body>
     </html>

@@ -53,6 +53,11 @@ Free tool; revenue is referrals and (later) ads.
 - **Ad slot** — `src/components/AdSlot.tsx`. Empty until an ad network tag is
   dropped in and `NEXT_PUBLIC_ADS=1` is set. Prefer a privacy-friendly network
   (Carbon, EthicalAds) to keep the "nothing leaves your browser" pitch honest.
+- **Donations** — `src/lib/support.ts`. Set `NEXT_PUBLIC_DONATE_URL` to any
+  payment page that is just a link (Ko-fi, Buy Me a Coffee, a Stripe Payment
+  Link, GitHub Sponsors, PayPal.me) and the header button, the footer link and
+  the panel under the results all switch on. Unset, they render nothing.
+  `NEXT_PUBLIC_DONATE_LABEL` overrides the wording (default "Buy me a coffee").
 
 `/privacy` and `/disclaimer` are static pages; keep them current if either of
 the above changes.
@@ -65,9 +70,18 @@ the above changes.
 - `/robots.txt` and `/sitemap.xml` are generated (`src/app/robots.ts`,
   `src/app/sitemap.ts`). Add new guides to `GUIDES` in `src/lib/site.ts` and
   they join the sitemap and the guides index automatically.
-- Structured data: WebApplication on every page (layout), FAQPage on the home
-  page only (`FaqSchema`, matching the visible FAQ — Google penalises schema
-  that isn't on the page), Article + BreadcrumbList on each guide.
+- Structured data: one `@graph` on every page (layout) carrying Organization,
+  WebSite and WebApplication under stable `@id`s, so the per-page blocks can
+  reference them: FAQPage on the home page only (`FaqSchema`, matching the
+  visible FAQ — Google penalises schema that isn't on the page), Article +
+  BreadcrumbList on each guide, CollectionPage + BreadcrumbList on the index.
+- Every route sets its own canonical. Adding a page without one makes it
+  inherit `/` from the layout, which tells Google it is a duplicate of the
+  home page — always set `alternates.canonical`.
+- Guide metadata comes from `guideMetadata(slug)` in `src/lib/site.ts`, which
+  keeps the canonical, the OG type and `article:published_time` /
+  `article:modified_time` in step with the JSON-LD.
+- `not-found.tsx` is `noindex, follow` and links back into the site.
 - Social/preview image and favicon are generated at build time
   (`src/app/opengraph-image.tsx`, `src/app/icon.tsx`); `manifest.ts` covers
   mobile install metadata.

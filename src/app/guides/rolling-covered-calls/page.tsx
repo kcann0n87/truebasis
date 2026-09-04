@@ -1,14 +1,8 @@
-import type { Metadata } from "next";
 import { GuideLayout } from "@/components/GuideLayout";
-import { GUIDES } from "@/lib/site";
+import { GUIDES, guideMetadata } from "@/lib/site";
 
 const meta = GUIDES.find((g) => g.slug === "rolling-covered-calls")!;
-export const metadata: Metadata = {
-  title: meta.title,
-  description: meta.description,
-  alternates: { canonical: `/guides/${meta.slug}` },
-  openGraph: { title: meta.title, description: meta.description, type: "article" },
-};
+export const metadata = guideMetadata("rolling-covered-calls");
 
 export default function Page() {
   return (

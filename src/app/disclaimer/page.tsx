@@ -1,11 +1,19 @@
-import Link from "next/link";
+import type { Metadata } from "next";
+import { SiteFooter } from "@/components/SiteFooter";
+import { SiteHeader } from "@/components/SiteHeader";
 
-export const metadata = { title: "Disclaimer — OptionBasis" };
+export const metadata: Metadata = {
+  title: "Disclaimer: a calculator, not advice",
+  description:
+    "OptionBasis computes a trading view of cost basis using the average-cost method. It is not investment, tax or legal advice, and it is not what your broker files.",
+  alternates: { canonical: "/disclaimer" },
+};
 
 export default function Disclaimer() {
   return (
-    <main className="min-h-screen bg-gray-950 text-gray-200 px-4 sm:px-8 py-8 max-w-3xl mx-auto text-sm leading-relaxed">
-      <Link href="/" className="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 inline-block mb-4">← OptionBasis</Link>
+    <div className="min-h-screen bg-gray-950 text-gray-200 flex flex-col">
+      <SiteHeader />
+      <main className="flex-1 px-4 sm:px-8 py-8 max-w-3xl mx-auto text-sm leading-relaxed">
       <h1 className="text-2xl font-bold text-emerald-400 mb-4">Disclaimer</h1>
       <p className="mb-3">
         OptionBasis is a calculator, not advice. Nothing on this site is investment, tax, legal or accounting advice, and
@@ -27,6 +35,8 @@ export default function Disclaimer() {
         account through them. That does not influence the calculations.
       </p>
       <p className="mb-3">Options involve risk and are not suitable for all investors.</p>
-    </main>
+      </main>
+      <SiteFooter />
+    </div>
   );
 }

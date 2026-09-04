@@ -1,11 +1,19 @@
-import Link from "next/link";
+import type { Metadata } from "next";
+import { SiteFooter } from "@/components/SiteFooter";
+import { SiteHeader } from "@/components/SiteHeader";
 
-export const metadata = { title: "Privacy — OptionBasis" };
+export const metadata: Metadata = {
+  title: "Privacy: your statement is parsed in your browser",
+  description:
+    "OptionBasis has no upload endpoint, no accounts and no server-side storage. Your brokerage statement is read by JavaScript on your own device and discarded on refresh.",
+  alternates: { canonical: "/privacy" },
+};
 
 export default function Privacy() {
   return (
-    <main className="min-h-screen bg-gray-950 text-gray-200 px-4 sm:px-8 py-8 max-w-3xl mx-auto text-sm leading-relaxed">
-      <Link href="/" className="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 inline-block mb-4">← OptionBasis</Link>
+    <div className="min-h-screen bg-gray-950 text-gray-200 flex flex-col">
+      <SiteHeader />
+      <main className="flex-1 px-4 sm:px-8 py-8 max-w-3xl mx-auto text-sm leading-relaxed">
       <h1 className="text-2xl font-bold text-emerald-400 mb-4">Privacy</h1>
       <p className="mb-3">
         <strong>Your statement never leaves your browser.</strong> When you drop a file into OptionBasis it is read and
@@ -27,6 +35,8 @@ export default function Privacy() {
         not have access to the contents of your statement, which exists only in the page&apos;s memory.
       </p>
       <p className="text-gray-500 text-xs mt-6">Questions: open an issue on the project&apos;s GitHub repository.</p>
-    </main>
+      </main>
+      <SiteFooter />
+    </div>
   );
 }

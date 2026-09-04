@@ -1,41 +1,52 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { GUIDES, SITE_NAME, SITE_URL, type GuideMeta } from "@/lib/site";
+import { SiteFooter } from "./SiteFooter";
+import { SiteHeader } from "./SiteHeader";
 
-// Shared shell for /guides/* articles: header, article JSON-LD, prose
-// styles (globals.css `.guide`), "try it" call to action, related guides.
+// Shared shell for /guides/* articles: nav, article JSON-LD, prose styles
+// (globals.css `.guide`), "try it" call to action, related guides.
 export function GuideLayout({ meta, children }: { meta: GuideMeta; children: ReactNode }) {
   const url = `${SITE_URL}/guides/${meta.slug}`;
   const jsonLd = {
     "@context": "https://schema.org",
-    "@type": "Article",
-    headline: meta.title,
-    description: meta.description,
-    datePublished: meta.published,
-    dateModified: meta.updated,
-    mainEntityOfPage: url,
-    author: { "@type": "Organization", name: SITE_NAME, url: SITE_URL },
-    publisher: { "@type": "Organization", name: SITE_NAME, url: SITE_URL },
-  };
-  const breadcrumbs = {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    itemListElement: [
-      { "@type": "ListItem", position: 1, name: SITE_NAME, item: SITE_URL },
-      { "@type": "ListItem", position: 2, name: "Guides", item: `${SITE_URL}/guides` },
-      { "@type": "ListItem", position: 3, name: meta.title, item: url },
+    "@graph": [
+      {
+        "@type": "Article",
+        "@id": `${url}#article`,
+        headline: meta.title,
+        description: meta.description,
+        datePublished: meta.published,
+        dateModified: meta.updated,
+        mainEntityOfPage: { "@type": "WebPage", "@id": url },
+        url,
+        inLanguage: "en-US",
+        isPartOf: { "@id": `${SITE_URL}/#website` },
+        author: { "@id": `${SITE_URL}/#organization` },
+        publisher: { "@id": `${SITE_URL}/#organization` },
+        about: { "@id": `${SITE_URL}/#app` },
+      },
+      {
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: SITE_NAME, item: SITE_URL },
+          { "@type": "ListItem", position: 2, name: "Guides", item: `${SITE_URL}/guides` },
+          { "@type": "ListItem", position: 3, name: meta.title, item: url },
+        ],
+      },
     ],
   };
   const related = GUIDES.filter((g) => g.slug !== meta.slug);
   return (
-    <main className="min-h-screen bg-gray-950 text-gray-200">
+    <div className="min-h-screen bg-gray-950 text-gray-200 flex flex-col">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbs) }} />
-      <div className="bg-gray-900 border-b border-gray-800 px-4 sm:px-8 py-3 flex items-center gap-3 text-xs">
-        <Link href="/" className="px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300">← {SITE_NAME}</Link>
-        <Link href="/guides" className="text-gray-400 hover:text-gray-200">Guides</Link>
-      </div>
-      <article className="guide px-4 sm:px-8 py-8 max-w-3xl mx-auto">
+      <SiteHeader current="guides" />
+      <article className="guide flex-1 px-4 sm:px-8 py-8 max-w-3xl mx-auto w-full">
+        <nav aria-label="Breadcrumb" className="not-prose text-xs text-gray-500 mb-3">
+          <Link href="/" className="hover:text-gray-300">{SITE_NAME}</Link>
+          <span className="mx-1.5">/</span>
+          <Link href="/guides" className="hover:text-gray-300">Guides</Link>
+        </nav>
         <div className="text-xs text-gray-500 mb-3">
           {meta.readMinutes} min read · updated {meta.updated}
         </div>
@@ -68,6 +79,7 @@ export function GuideLayout({ meta, children }: { meta: GuideMeta; children: Rea
           documents use lot-based rules. See the <Link href="/disclaimer" className="underline">disclaimer</Link>.
         </div>
       </article>
-    </main>
+      <SiteFooter />
+    </div>
   );
 }
