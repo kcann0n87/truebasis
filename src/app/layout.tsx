@@ -5,10 +5,19 @@ import "./globals.css";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
+const description =
+  "Drop in a brokerage activity statement and see, per stock, how much option premium you've collected and what your shares really cost you after it. Runs entirely in your browser — nothing is uploaded.";
+
 export const metadata: Metadata = {
   title: "TrueBasis — your real cost basis after covered-call premium",
-  description:
-    "Upload a brokerage activity statement and see, per stock, how much option premium you've collected and what your shares really cost you. Runs entirely in your browser; nothing is uploaded.",
+  description,
+  openGraph: {
+    title: "TrueBasis — your real cost basis after covered-call premium",
+    description,
+    type: "website",
+    siteName: "TrueBasis",
+  },
+  twitter: { card: "summary", title: "TrueBasis", description },
 };
 
 export const viewport: Viewport = {

@@ -33,13 +33,19 @@ npm test         # fixture-driven accounting tests (node --experimental-strip-ty
 npm run build
 ```
 
-## Monetisation plumbing
+## Monetisation
 
-`src/lib/license.ts` is a placeholder: it accepts any key shaped like
-`TB-XXXX-XXXX-XXXX`, remembers it in localStorage, and lifts the free-tier
-limit (`FREE_STATEMENT_LIMIT`, currently 1 statement at a time). Before
-charging anyone, replace `validateKey` with a call to a small serverless
-endpoint that checks the key against Stripe / Lemon Squeezy.
+Free tool; revenue is referrals and (later) ads.
+
+- **Broker referral links** — `src/lib/affiliates.ts`. Cards render only for
+  links set in env: `NEXT_PUBLIC_REF_IBKR`, `NEXT_PUBLIC_REF_TASTYTRADE`,
+  `NEXT_PUBLIC_REF_ROBINHOOD`. Disclosure text is built in.
+- **Ad slot** — `src/components/AdSlot.tsx`. Empty until an ad network tag is
+  dropped in and `NEXT_PUBLIC_ADS=1` is set. Prefer a privacy-friendly network
+  (Carbon, EthicalAds) to keep the "nothing leaves your browser" pitch honest.
+
+`/privacy` and `/disclaimer` are static pages; keep them current if either of
+the above changes.
 
 ## Deploy
 

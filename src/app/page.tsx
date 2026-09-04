@@ -11,8 +11,11 @@ import {
   type CcStatement,
   type CcTickerSummary,
 } from "@/lib/covered-calls";
+import Link from "next/link";
 import { clearStored, loadStored, saveStored } from "@/lib/local-store";
-import { FREE_STATEMENT_LIMIT, loadLicense, saveLicense, validateKey } from "@/lib/license";
+import { DEMO_STATEMENTS } from "@/lib/demo";
+import { Referrals } from "@/components/Referrals";
+import { AdSlot } from "@/components/AdSlot";
 
 // TrueBasis — upload a brokerage activity statement, see per stock how much
 // option premium you've collected and what the shares really cost you.
@@ -331,9 +334,7 @@ export default function Home() {
   const [sinceLot, setSinceLot] = useState(true);
   const [showFlat, setShowFlat] = useState(false);
   const [remember, setRemember] = useState(false);
-  const [license, setLicense] = useState<string | null>(null);
-  const [keyInput, setKeyInput] = useState("");
-  const [showPro, setShowPro] = useState(false);
+  const [isDemo, setIsDemo] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -344,7 +345,6 @@ export default function Home() {
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
-      setLicense(loadLicense());
       const stored = loadStored();
       if (stored) {
         setRemember(true);
@@ -378,7 +378,6 @@ export default function Home() {
     if (err) queueMicrotask(() => setError(`Couldn't remember on this device (${err}). Browser storage is probably full — try fewer statements.`));
   }, [hydrated, remember, loaded, overrides, excluded]);
 
-  const isPro = !!license;
   const report: CcReport | null = useMemo(
     () => (loaded.length ? buildReport(loaded.map((l) => l.statement), overrides, excluded) : null),
     [loaded, overrides, excluded],
@@ -406,11 +405,6 @@ export default function Home() {
             out.push({ fileName: f.name, ok: true, message: `already loaded (${statement.period ?? "unknown period"})` });
             continue;
           }
-          if (!isPro && next.length >= FREE_STATEMENT_LIMIT) {
-            out.push({ fileName: f.name, ok: false, message: `free tier is limited to ${FREE_STATEMENT_LIMIT} statement at a time — Pro unlocks unlimited history` });
-            setShowPro(true);
-            continue;
-          }
           next.push({ statement, text });
           out.push({ fileName: f.name, ok: true, message: `${statement.trades.length} stock/option fills · ${statement.period ?? "unknown period"}` });
         } catch (e) {
@@ -419,10 +413,21 @@ export default function Home() {
       }
       setLoaded(next);
       setNotes(out);
+      setIsDemo(false);
       if (fileRef.current) fileRef.current.value = "";
     },
-    [loaded, isPro],
+    [loaded],
   );
+
+  // One-click demo with the synthetic statements the tests use.
+  const loadDemo = () => {
+    setLoaded(DEMO_STATEMENTS.map((d) => ({ statement: parseStatementCsv(d.text, d.fileName), text: d.text })));
+    setOverrides({});
+    setExcluded(new Set());
+    setNotes([]);
+    setExpanded(new Set(["SNDK"]));
+    setIsDemo(true);
+  };
 
   const removeStatement = (id: string) => setLoaded((prev) => prev.filter((l) => l.statement.id !== id));
   const saveStart = (ticker: string, pos: CcStartingPosition | null) =>
@@ -452,6 +457,7 @@ export default function Home() {
     setExcluded(new Set());
     setNotes([]);
     setExpanded(new Set());
+    setIsDemo(false);
   };
 
   const isActive = (t: CcTickerSummary) => t.sharesHeld > 0 || t.openCalls > 0 || t.openPuts > 0;
@@ -477,50 +483,14 @@ export default function Home() {
             </p>
           </div>
           <button
-            onClick={() => setShowPro(true)}
-            className={`shrink-0 text-xs px-2 py-1 rounded border ${isPro ? "border-emerald-700 text-emerald-300" : "border-gray-700 text-gray-300 hover:bg-gray-800"}`}
+            onClick={loadDemo}
+            className="shrink-0 text-xs px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold"
+            title="Load a set of made-up statements so you can see what the tool does"
           >
-            {isPro ? "Pro ✓" : "Get Pro"}
+            Try the demo
           </button>
         </div>
       </div>
-
-      {showPro && (
-        <div className="px-3 sm:px-6 py-3 bg-gray-900/70 border-b border-gray-800 text-xs">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-gray-300">
-              {isPro
-                ? `Pro is active on this browser (${license}).`
-                : `Free: ${FREE_STATEMENT_LIMIT} statement at a time. Pro: unlimited statements, full history, exclusions.`}
-            </span>
-            {!isPro && (
-              <>
-                <input
-                  value={keyInput}
-                  onChange={(e) => setKeyInput(e.target.value)}
-                  placeholder="Licence key (TB-XXXX-XXXX-XXXX)"
-                  className="w-64 bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100 font-mono"
-                />
-                <button
-                  onClick={() => {
-                    if (validateKey(keyInput)) { saveLicense(keyInput); setLicense(keyInput.trim().toUpperCase()); setKeyInput(""); }
-                    else setError("That doesn't look like a valid licence key.");
-                  }}
-                  className="px-3 py-1 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold"
-                >
-                  Activate
-                </button>
-              </>
-            )}
-            {isPro && (
-              <button onClick={() => { saveLicense(null); setLicense(null); }} className="px-3 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300">
-                Deactivate
-              </button>
-            )}
-            <button onClick={() => setShowPro(false)} className="ml-auto text-gray-500 hover:text-gray-300">✕</button>
-          </div>
-        </div>
-      )}
 
       {/* Upload */}
       <div className="px-3 sm:px-6 py-4 border-b border-gray-800 space-y-3">
@@ -542,6 +512,9 @@ export default function Home() {
             onChange={(e) => { if (e.target.files?.length) upload(e.target.files); }}
           />
           <div className="text-sm font-semibold text-gray-200">Drop statement CSVs here, or tap to choose</div>
+          {isDemo && (
+            <div className="text-xs text-emerald-300 mt-1">Showing demo data — drop your own statement to replace it.</div>
+          )}
           <div className="text-xs text-gray-500 mt-1">
             Interactive Brokers for now: Client Portal → Performance &amp; Reports → Statements → Activity → CSV.
             Overlapping statements are de-duplicated. More brokers coming.
@@ -748,6 +721,39 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {!report && (
+        <section className="px-3 sm:px-6 py-4 border-t border-gray-800">
+          <div className="text-sm font-semibold text-gray-200 mb-2">How it works</div>
+          <ol className="grid gap-2 sm:grid-cols-3 text-xs text-gray-400">
+            <li className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3">
+              <div className="text-emerald-400 font-bold mb-1">1 · Export</div>
+              In IBKR: Performance &amp; Reports → Statements → Activity → CSV. One month or a whole year; overlapping
+              periods are de-duplicated.
+            </li>
+            <li className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3">
+              <div className="text-emerald-400 font-bold mb-1">2 · Drop it here</div>
+              The file is parsed in your browser. Assignments, rolls, buybacks and expirations are matched up per
+              stock automatically.
+            </li>
+            <li className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3">
+              <div className="text-emerald-400 font-bold mb-1">3 · Read your real basis</div>
+              Strike minus the put that got you assigned, minus every call since: what the shares actually cost you,
+              and the price where you break even.
+            </li>
+          </ol>
+        </section>
+      )}
+
+      <AdSlot slot="below-results" />
+      <Referrals />
+
+      <footer className="px-3 sm:px-6 py-4 border-t border-gray-800 text-[11px] text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
+        <span>© {new Date().getFullYear()} TrueBasis</span>
+        <Link href="/privacy" className="hover:text-gray-300">Privacy</Link>
+        <Link href="/disclaimer" className="hover:text-gray-300">Disclaimer</Link>
+        <span>Not investment or tax advice.</span>
+      </footer>
     </div>
   );
 }
