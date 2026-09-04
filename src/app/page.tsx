@@ -11,8 +11,12 @@ import {
   type CcStatement,
   type CcTickerSummary,
 } from "@/lib/covered-calls";
+import Link from "next/link";
 import { clearStored, loadStored, saveStored } from "@/lib/local-store";
-import { FREE_STATEMENT_LIMIT, loadLicense, saveLicense, validateKey } from "@/lib/license";
+import { DEMO_STATEMENTS } from "@/lib/demo";
+import { Referrals } from "@/components/Referrals";
+import { ReferralBanner } from "@/components/ReferralBanner";
+import { AdSlot } from "@/components/AdSlot";
 
 // TrueBasis — upload a brokerage activity statement, see per stock how much
 // option premium you've collected and what the shares really cost you.
@@ -80,7 +84,10 @@ function StartingPositionForm({
   const [avgCost, setAvgCost] = useState(t.startingPosition ? String(t.startingPosition.avgCost) : "");
   return (
     <div className="bg-gray-900/60 border border-gray-800 rounded p-3 text-xs">
-      <div className="text-gray-300 font-semibold mb-1">Starting position (before your earliest statement)</div>
+      <div className="text-gray-300 font-semibold mb-1">
+        Starting position (before your earliest statement)
+        {t.startingPositionSource === "estimated" && <span className="ml-2 font-normal text-gray-500">currently estimated from the broker&apos;s cost basis</span>}
+      </div>
       <div className="text-gray-500 mb-2">
         Only for shares bought <em>before</em> the first uploaded statement, where the broker never shows the buy.
         Shares bought inside the statements are already counted — untick a fill&apos;s Count box to leave one out instead.
@@ -110,7 +117,7 @@ function StartingPositionForm({
         >
           Save
         </button>
-        {t.startingPosition && (
+        {t.startingPositionSource === "manual" && (
           <button
             onClick={() => { onSave(t.ticker, null); setShares(""); setAvgCost(""); }}
             className="px-3 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300"
@@ -126,12 +133,16 @@ function StartingPositionForm({
 function TickerDetail({
   t,
   w,
+  prem,
+  adj,
   sinceLot,
   onSaveStart,
   onToggleFill,
 }: {
   t: CcTickerSummary;
   w: CcPremiumWindow;
+  prem: number; // premium counted toward basis in the selected window (calls, or calls + puts)
+  adj: number | null; // adjusted cost per share for the same selection
   sinceLot: boolean;
   onSaveStart: (ticker: string, pos: CcStartingPosition | null) => void;
   onToggleFill: (fillKey: string, excluded: boolean) => void;
@@ -150,13 +161,33 @@ function TickerDetail({
         </div>
       )}
 
+      {t.notes.length > 0 && (
+        <div className="space-y-1">
+          {t.notes.map((nt, i) => (
+            <div key={i} className="text-xs text-gray-400 bg-gray-900/60 border border-gray-800 rounded px-2 py-1">
+              ℹ {nt}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <Stat
           label="Shares held"
           value={t.sharesHeld.toLocaleString()}
           hint={t.lotStart ? `this lot since ${t.lotStart.slice(0, 10)}` : t.ibkrOpenQty != null ? `broker shows ${t.ibkrOpenQty}` : undefined}
         />
-        <Stat label="Cost basis" value={money(t.totalCost)} hint={t.rawAvgCost != null ? `${money(t.rawAvgCost, 4)}/sh raw` : undefined} />
+        <Stat
+          label={`Adj. basis (${lotLabel})`}
+          value={t.sharesHeld > 0 ? money(t.totalCost - prem) : "—"}
+          hint={
+            t.sharesHeld > 0
+              ? `cost basis ${money(t.totalCost)} (${money(t.rawAvgCost, 4)}/sh${t.assignedPutPremium ? `, incl. ${money(t.assignedPutPremium)} assigned-put premium` : ""})` +
+                (t.ibkrOpenCostBasis && t.ibkrOpenQty ? ` · broker statement: ${money(t.ibkrOpenCostBasis)} (${money(t.ibkrOpenCostBasis / t.ibkrOpenQty, 2)}/sh)` : "") +
+                ` · adj. ${money(adj, 4)}/sh`
+              : undefined
+          }
+        />
         <Stat label={`Net premium (${lotLabel})`} value={signed(w.netPremium)} cls={pnlClass(w.netPremium)} hint={`calls ${signed(w.callPremium)} · puts ${signed(w.putPremium)}`} />
         <Stat label={`Stock realized (${lotLabel})`} value={signed(w.stockRealizedPnl)} cls={pnlClass(w.stockRealizedPnl)} hint="sells + assignments, avg-cost method" />
       </div>
@@ -167,7 +198,7 @@ function TickerDetail({
         <div className="text-xs font-semibold text-gray-300 mb-1">
           Options written ({t.legs.length} contract line{t.legs.length === 1 ? "" : "s"})
           {lotActive && (
-            <span className="font-normal text-gray-500"> · contracts sold before {t.lotStart!.slice(0, 10)} are dimmed and not counted, buybacks included</span>
+            <span className="font-normal text-gray-500"> · contracts sold before {t.lotStart!.slice(0, 10)} are dimmed and not counted (buybacks included), except the put that delivered the shares</span>
           )}
         </div>
         {t.legs.length === 0 ? (
@@ -190,11 +221,16 @@ function TickerDetail({
               <tbody className="divide-y divide-gray-800/60">
                 {t.legs.map((l) => {
                   const counted = lotActive ? l.inLot : true;
-                  const net = lotActive ? l.lotNetPremium : l.netPremium;
+                  const net = lotActive && !l.basisPut ? l.lotNetPremium : l.netPremium;
                   return (
                     <tr key={l.key} className={`hover:bg-gray-900/40 ${counted ? "" : "opacity-40"}`}>
                       <Td cls="text-gray-100">
                         {t.ticker} {l.expiration} ${l.strike} {l.right === "C" ? "Call" : "Put"}
+                        {l.lotSeed && (
+                          <span className="ml-1 text-[10px] uppercase text-emerald-400" title="This put's assignment delivered the current shares, so its premium counts toward their basis">
+                            delivered lot
+                          </span>
+                        )}
                       </Td>
                       <Td cls="text-gray-400">
                         {l.premiumSource === "ibkr-realized" ? (
@@ -209,7 +245,10 @@ function TickerDetail({
                       <Td right cls="text-gray-300">{l.contracts}</Td>
                       <Td right cls="text-gray-300">{l.premiumSource === "ibkr-realized" ? "?" : money(l.openCredit)}</Td>
                       <Td right cls="text-gray-300">{l.closeDebit ? money(l.closeDebit) : "—"}</Td>
-                      <Td right cls={`font-bold ${pnlClass(net)}`}>{signed(net)}</Td>
+                      <Td right cls={`font-bold ${pnlClass(net)}`}>
+                        {signed(net)}
+                        {l.basisPut && lotActive && <span className="text-gray-500 font-normal" title="Assigned put: folded into the cost basis rather than the premium column"> → basis</span>}
+                      </Td>
                       <td className="px-2 py-1.5">
                         <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded font-semibold ${OUTCOME_STYLE[l.outcome]}`}>
                           {l.outcome}
@@ -308,10 +347,9 @@ export default function Home() {
   const [includePuts, setIncludePuts] = useState(true);
   const [sinceLot, setSinceLot] = useState(true);
   const [showFlat, setShowFlat] = useState(false);
+  const [showNoOptions, setShowNoOptions] = useState(false);
   const [remember, setRemember] = useState(false);
-  const [license, setLicense] = useState<string | null>(null);
-  const [keyInput, setKeyInput] = useState("");
-  const [showPro, setShowPro] = useState(false);
+  const [isDemo, setIsDemo] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -322,7 +360,6 @@ export default function Home() {
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
-      setLicense(loadLicense());
       const stored = loadStored();
       if (stored) {
         setRemember(true);
@@ -356,7 +393,6 @@ export default function Home() {
     if (err) queueMicrotask(() => setError(`Couldn't remember on this device (${err}). Browser storage is probably full — try fewer statements.`));
   }, [hydrated, remember, loaded, overrides, excluded]);
 
-  const isPro = !!license;
   const report: CcReport | null = useMemo(
     () => (loaded.length ? buildReport(loaded.map((l) => l.statement), overrides, excluded) : null),
     [loaded, overrides, excluded],
@@ -366,7 +402,7 @@ export default function Home() {
     async (files: FileList | File[]) => {
       const list = Array.from(files).filter((f) => f.name.toLowerCase().endsWith(".csv") || f.type === "text/csv");
       if (list.length === 0) {
-        setError("Only .csv files are accepted. In IBKR: Performance & Reports → Statements → Activity → CSV.");
+        setError("Only .csv files are accepted: an IBKR Activity Statement or a Robinhood activity report.");
         return;
       }
       setError(null);
@@ -378,15 +414,10 @@ export default function Home() {
           if (!text.trim()) throw new Error("Empty file");
           const statement = parseStatementCsv(text, f.name);
           if (statement.trades.length === 0 && !statement.period) {
-            throw new Error("Doesn't look like an IBKR Activity Statement CSV (no Trades / Statement sections)");
+            throw new Error("Doesn't look like an IBKR Activity Statement or a Robinhood activity report");
           }
           if (next.some((l) => l.statement.id === statement.id)) {
             out.push({ fileName: f.name, ok: true, message: `already loaded (${statement.period ?? "unknown period"})` });
-            continue;
-          }
-          if (!isPro && next.length >= FREE_STATEMENT_LIMIT) {
-            out.push({ fileName: f.name, ok: false, message: `free tier is limited to ${FREE_STATEMENT_LIMIT} statement at a time — Pro unlocks unlimited history` });
-            setShowPro(true);
             continue;
           }
           next.push({ statement, text });
@@ -397,10 +428,21 @@ export default function Home() {
       }
       setLoaded(next);
       setNotes(out);
+      setIsDemo(false);
       if (fileRef.current) fileRef.current.value = "";
     },
-    [loaded, isPro],
+    [loaded],
   );
+
+  // One-click demo with the synthetic statements the tests use.
+  const loadDemo = () => {
+    setLoaded(DEMO_STATEMENTS.map((d) => ({ statement: parseStatementCsv(d.text, d.fileName), text: d.text })));
+    setOverrides({});
+    setExcluded(new Set());
+    setNotes([]);
+    setExpanded(new Set(["SNDK"]));
+    setIsDemo(true);
+  };
 
   const removeStatement = (id: string) => setLoaded((prev) => prev.filter((l) => l.statement.id !== id));
   const saveStart = (ticker: string, pos: CcStartingPosition | null) =>
@@ -430,11 +472,14 @@ export default function Home() {
     setExcluded(new Set());
     setNotes([]);
     setExpanded(new Set());
+    setIsDemo(false);
   };
 
   const isActive = (t: CcTickerSummary) => t.sharesHeld > 0 || t.openCalls > 0 || t.openPuts > 0;
-  const tickers = (report?.tickers ?? []).filter((t) => showFlat || isActive(t));
-  const flatCount = (report?.tickers ?? []).filter((t) => !isActive(t)).length;
+  const hasOptions = (t: CcTickerSummary) => t.legs.length > 0;
+  const tickers = (report?.tickers ?? []).filter((t) => (showFlat || isActive(t)) && (showNoOptions || hasOptions(t)));
+  const flatCount = (report?.tickers ?? []).filter((t) => !isActive(t) && (showNoOptions || hasOptions(t))).length;
+  const noOptionsCount = (report?.tickers ?? []).filter((t) => !hasOptions(t) && (showFlat || isActive(t))).length;
   const windowOf = (t: CcTickerSummary): CcPremiumWindow => (sinceLot ? t.lot : t.lifetime);
   const totals = sinceLot ? report?.lotTotals : report?.totals;
   const totalPremium = includePuts ? totals?.netPremium : totals?.callPremium;
@@ -455,50 +500,14 @@ export default function Home() {
             </p>
           </div>
           <button
-            onClick={() => setShowPro(true)}
-            className={`shrink-0 text-xs px-2 py-1 rounded border ${isPro ? "border-emerald-700 text-emerald-300" : "border-gray-700 text-gray-300 hover:bg-gray-800"}`}
+            onClick={loadDemo}
+            className="shrink-0 text-xs px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold"
+            title="Load a set of made-up statements so you can see what the tool does"
           >
-            {isPro ? "Pro ✓" : "Get Pro"}
+            Try the demo
           </button>
         </div>
       </div>
-
-      {showPro && (
-        <div className="px-3 sm:px-6 py-3 bg-gray-900/70 border-b border-gray-800 text-xs">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-gray-300">
-              {isPro
-                ? `Pro is active on this browser (${license}).`
-                : `Free: ${FREE_STATEMENT_LIMIT} statement at a time. Pro: unlimited statements, full history, exclusions.`}
-            </span>
-            {!isPro && (
-              <>
-                <input
-                  value={keyInput}
-                  onChange={(e) => setKeyInput(e.target.value)}
-                  placeholder="Licence key (TB-XXXX-XXXX-XXXX)"
-                  className="w-64 bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100 font-mono"
-                />
-                <button
-                  onClick={() => {
-                    if (validateKey(keyInput)) { saveLicense(keyInput); setLicense(keyInput.trim().toUpperCase()); setKeyInput(""); }
-                    else setError("That doesn't look like a valid licence key.");
-                  }}
-                  className="px-3 py-1 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold"
-                >
-                  Activate
-                </button>
-              </>
-            )}
-            {isPro && (
-              <button onClick={() => { saveLicense(null); setLicense(null); }} className="px-3 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300">
-                Deactivate
-              </button>
-            )}
-            <button onClick={() => setShowPro(false)} className="ml-auto text-gray-500 hover:text-gray-300">✕</button>
-          </div>
-        </div>
-      )}
 
       {/* Upload */}
       <div className="px-3 sm:px-6 py-4 border-b border-gray-800 space-y-3">
@@ -520,9 +529,12 @@ export default function Home() {
             onChange={(e) => { if (e.target.files?.length) upload(e.target.files); }}
           />
           <div className="text-sm font-semibold text-gray-200">Drop statement CSVs here, or tap to choose</div>
+          {isDemo && (
+            <div className="text-xs text-emerald-300 mt-1">Showing demo data — drop your own statement to replace it.</div>
+          )}
           <div className="text-xs text-gray-500 mt-1">
-            Interactive Brokers for now: Client Portal → Performance &amp; Reports → Statements → Activity → CSV.
-            Overlapping statements are de-duplicated. More brokers coming.
+            Interactive Brokers: Client Portal → Performance &amp; Reports → Statements → Activity → CSV.
+            Robinhood: Account → Reports and statements → Activity reports → CSV. Overlapping statements are de-duplicated.
           </div>
         </div>
 
@@ -565,6 +577,7 @@ export default function Home() {
                   className="inline-flex items-center gap-1.5 bg-gray-900 border border-gray-800 rounded px-2 py-1 text-gray-300"
                   title={s.fileName}
                 >
+                  <span className="text-gray-500 uppercase text-[10px]">{s.broker === "robinhood" ? "RH" : "IBKR"}</span>
                   <span className="font-mono">{s.periodStart && s.periodEnd ? `${s.periodStart} → ${s.periodEnd}` : s.period ?? s.fileName}</span>
                   {s.accountId && <span className="text-gray-500">{s.accountId}</span>}
                   <span className="text-gray-500">{s.tradeCount} fills</span>
@@ -576,11 +589,13 @@ export default function Home() {
         )}
       </div>
 
+      <ReferralBanner />
+
       {/* Summary */}
       {report && report.tickers.length > 0 && totals && (
         <div className="px-3 sm:px-6 py-4 border-b border-gray-800">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <Stat label="Call premium" value={signed(totals.callPremium)} cls={pnlClass(totals.callPremium)} hint={sinceLot ? "current lots · net of buybacks + commissions" : "all history · net of buybacks + commissions"} />
+            <Stat label="Call premium" value={signed(totals.callPremium)} cls={pnlClass(totals.callPremium)} hint={sinceLot ? "stocks you hold, current lots · net of buybacks + commissions" : "all history, every name · net of buybacks + commissions"} />
             <Stat label="Put premium" value={signed(totals.putPremium)} cls={pnlClass(totals.putPremium)} hint="net of buybacks + commissions" />
             <Stat label="Stock realized" value={signed(totals.stockRealizedPnl)} cls={pnlClass(totals.stockRealizedPnl)} hint="sells + assignments" />
             <Stat
@@ -610,6 +625,10 @@ export default function Home() {
               <input type="checkbox" checked={showFlat} onChange={(e) => setShowFlat(e.target.checked)} />
               Show closed-out names{flatCount > 0 ? ` (${flatCount})` : ""}
             </label>
+            <label className="flex items-center gap-1.5 cursor-pointer select-none" title="Stocks in the statements with no option trades against them (index funds, dividend reinvestments, …)">
+              <input type="checkbox" checked={showNoOptions} onChange={(e) => setShowNoOptions(e.target.checked)} />
+              Show stocks with no options{noOptionsCount > 0 ? ` (${noOptionsCount})` : ""}
+            </label>
           </div>
         </div>
 
@@ -631,11 +650,11 @@ export default function Home() {
                   <Th>Stock</Th>
                   <Th right>Shares</Th>
                   <Th title="When the current lot of shares started (the buy or assignment that took the position from 0). 'before history' = held since before the uploaded statements.">Since</Th>
-                  <Th right title="Average cost of shares held, from stock fills only">Raw avg</Th>
+                  <Th right title="Cost per share of the shares held: what you paid, net of the premium from the put that delivered them (if any)">Cost / sh</Th>
                   <Th right title="Net premium from calls (opens − buybacks − commissions)">Call prem</Th>
                   <Th right title="Net premium from puts">Put prem</Th>
                   <Th right title="Premium collected as a % of the current cost basis">Prem %</Th>
-                  <Th right title="Total cost of the shares held (average-cost method)">Cost basis</Th>
+                  <Th right title="Total cost of the shares held, net of the premium from the put that delivered them (average-cost method)">Cost basis</Th>
                   <Th right title="Cost basis − premium collected: what the shares have really cost you">Adj. basis</Th>
                   <Th right title="(cost basis − premium) ÷ shares held: your adjusted cost per share">Adj. cost / sh</Th>
                   <Th right title="(cost basis − premium − realized stock P&L) ÷ shares. Sell everything here and the whole campaign nets to zero.">Break-even</Th>
@@ -665,7 +684,13 @@ export default function Home() {
                         <Td right cls={pnlClass(w.callPremium)}>{signed(w.callPremium)}</Td>
                         <Td right cls={w.putPremium === 0 ? "text-gray-600" : pnlClass(w.putPremium)}>{signed(w.putPremium)}</Td>
                         <Td right cls="text-gray-300">{premPct == null ? "—" : `${premPct.toFixed(1)}%`}</Td>
-                        <Td right cls="text-gray-300">{t.sharesHeld > 0 ? money(t.totalCost) : "—"}</Td>
+                        <Td right cls="text-gray-300">
+                          {t.sharesHeld > 0 ? (
+                            <span title={t.assignedPutPremium ? `strike cost ${money(t.totalCost + t.assignedPutPremium)} − ${money(t.assignedPutPremium)} assigned-put premium` : undefined}>
+                              {money(t.totalCost)}{t.assignedPutPremium ? <span className="text-emerald-500">*</span> : null}
+                            </span>
+                          ) : "—"}
+                        </Td>
                         <Td right cls="text-gray-200">{t.sharesHeld > 0 ? money(t.totalCost - prem) : "—"}</Td>
                         <Td right cls="text-emerald-300 font-bold">
                           {t.sharesHeld > 0 ? money(adj) : <span className="text-gray-500" title="Position closed out">flat {signed(w.totalPnlIfFlat)}</span>}
@@ -684,7 +709,7 @@ export default function Home() {
                       {isOpen && (
                         <tr>
                           <td colSpan={13} className="p-0">
-                            <TickerDetail t={t} w={w} sinceLot={sinceLot} onSaveStart={saveStart} onToggleFill={toggleFill} />
+                            <TickerDetail t={t} w={w} prem={prem} adj={adj} sinceLot={sinceLot} onSaveStart={saveStart} onToggleFill={toggleFill} />
                           </td>
                         </tr>
                       )}
@@ -696,11 +721,14 @@ export default function Home() {
           </div>
         )}
 
+        {report && (
         <div className="text-[11px] text-gray-500 mt-3 space-y-1">
           <div>
             <span className="text-gray-400">Only since current shares were acquired</span>{" "}starts the clock at the buy or
-            assignment that took the position from zero. Contracts sold before that (e.g. the put that got you assigned,
-            or calls written on shares you no longer hold) belong to the previous campaign and are left out, buybacks included.
+            assignment that took the position from zero. Contracts sold before that (e.g. calls written on shares you no
+            longer hold) belong to the previous campaign and are left out, buybacks included. The put whose assignment
+            delivered the shares is different: its premium is netted straight into the cost basis (marked *), so the
+            basis is strike × shares − that credit, and the calls written since come off that.
           </div>
           <div>
             <span className="text-gray-400">Adj. basis</span> = cost basis of shares held − net option premium;{" "}
@@ -717,7 +745,41 @@ export default function Home() {
             trading tool, not tax or investment advice.
           </div>
         </div>
+        )}
       </div>
+
+      {!report && (
+        <section className="px-3 sm:px-6 py-4 border-t border-gray-800">
+          <div className="text-sm font-semibold text-gray-200 mb-2">How it works</div>
+          <ol className="grid gap-2 sm:grid-cols-3 text-xs text-gray-400">
+            <li className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3">
+              <div className="text-emerald-400 font-bold mb-1">1 · Export</div>
+              IBKR: Performance &amp; Reports → Statements → Activity → CSV. Robinhood: Reports and statements → Activity
+              reports → CSV. One month or a whole year; overlapping periods are de-duplicated.
+            </li>
+            <li className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3">
+              <div className="text-emerald-400 font-bold mb-1">2 · Drop it here</div>
+              The file is parsed in your browser. Assignments, rolls, buybacks and expirations are matched up per
+              stock automatically.
+            </li>
+            <li className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3">
+              <div className="text-emerald-400 font-bold mb-1">3 · Read your real basis</div>
+              Strike minus the put that got you assigned, minus every call since: what the shares actually cost you,
+              and the price where you break even.
+            </li>
+          </ol>
+        </section>
+      )}
+
+      <AdSlot slot="below-results" />
+      <Referrals />
+
+      <footer className="px-3 sm:px-6 py-4 border-t border-gray-800 text-[11px] text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
+        <span>© {new Date().getFullYear()} TrueBasis</span>
+        <Link href="/privacy" className="hover:text-gray-300">Privacy</Link>
+        <Link href="/disclaimer" className="hover:text-gray-300">Disclaimer</Link>
+        <span>Not investment or tax advice.</span>
+      </footer>
     </div>
   );
 }

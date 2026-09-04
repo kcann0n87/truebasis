@@ -11,8 +11,12 @@ user ticks "remember on this device" (localStorage only).
 
 ## What it handles
 
-- IBKR Activity Statement CSVs (more brokers to come). Overlapping statements
-  are de-duplicated, so monthlies plus a YTD is fine.
+- IBKR Activity Statement CSVs and Robinhood activity-report CSVs (detected
+  from the header). Overlapping statements are de-duplicated, so monthlies
+  plus a YTD is fine. Robinhood trade rows are parsed per Robinhood's
+  documented Trans Codes (Buy/Sell, STO/BTO/BTC/STC, OEXP, OASGN, OEXCS) but
+  have not yet been verified against a real trade export — see
+  `src/lib/robinhood.ts`.
 - Average-cost share lots, put and call assignments as ordinary fills.
 - Per-contract option lines with outcome (open / expired / closed / assigned)
   and rolls (buyback on the old line, new credit on the new one).
@@ -33,13 +37,21 @@ npm test         # fixture-driven accounting tests (node --experimental-strip-ty
 npm run build
 ```
 
-## Monetisation plumbing
+## Monetisation
 
-`src/lib/license.ts` is a placeholder: it accepts any key shaped like
-`TB-XXXX-XXXX-XXXX`, remembers it in localStorage, and lifts the free-tier
-limit (`FREE_STATEMENT_LIMIT`, currently 1 statement at a time). Before
-charging anyone, replace `validateKey` with a call to a small serverless
-endpoint that checks the key against Stripe / Lemon Squeezy.
+Free tool; revenue is referrals and (later) ads.
+
+- **Broker referral links** — `src/lib/affiliates.ts`. The IBKR link is
+  built in and shown as a full-width banner under the upload area plus a card
+  at the bottom; the Robinhood link is built in as a card. Override with
+  `NEXT_PUBLIC_REF_IBKR` / `NEXT_PUBLIC_REF_ROBINHOOD`; tastytrade appears
+  when `NEXT_PUBLIC_REF_TASTYTRADE` is set. Disclosure text is built in.
+- **Ad slot** — `src/components/AdSlot.tsx`. Empty until an ad network tag is
+  dropped in and `NEXT_PUBLIC_ADS=1` is set. Prefer a privacy-friendly network
+  (Carbon, EthicalAds) to keep the "nothing leaves your browser" pitch honest.
+
+`/privacy` and `/disclaimer` are static pages; keep them current if either of
+the above changes.
 
 ## Deploy
 
