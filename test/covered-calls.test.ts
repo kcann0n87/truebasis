@@ -36,14 +36,20 @@ assert.equal(outcomes["NVDA|C|145|2026-07-24"], "assigned");
 assert.equal(outcomes["NVDA|C|160|2026-08-21"], "open");
 assert.equal(nvda.warnings.length, 0, nvda.warnings.join("\n"));
 assert.equal(nvda.ibkrOpenQty, 100);
-// TSLA: shares held before the earliest statement, no stock fills uploaded.
-assert.equal(tsla.sharesHeld, 0);
+// TSLA: 100 shares held before the earliest statement (no stock fills uploaded) — seeded
+// automatically at IBKR's cost price (25000 / 100) with a note, no warning.
+assert.equal(tsla.sharesHeld, 100);
+assert.equal(tsla.startingPositionSource, "estimated");
+assert.equal(tsla.startingPosition!.avgCost, 250);
 assert.equal(tsla.lifetime.callPremium, 209.35);
-assert.ok(tsla.warnings.some((w) => w.includes("already held")), tsla.warnings.join("\n"));
+assert.equal(tsla.lifetime.adjustedAvgCost, 247.9065);
+assert.equal(tsla.warnings.length, 0, tsla.warnings.join("\n"));
+assert.ok(tsla.notes.some((n) => n.includes("aren't explained")), tsla.notes.join("\n"));
 // With an override the history is complete
 const r2 = buildReport([june, july], { TSLA: { shares: 100, avgCost: 250 } });
 const tsla2 = r2.tickers.find((t) => t.ticker === "TSLA")!;
 assert.equal(tsla2.sharesHeld, 100);
+assert.equal(tsla2.startingPositionSource, "manual");
 assert.equal(tsla2.lifetime.adjustedAvgCost, 247.9065);
 assert.equal(tsla2.warnings.length, 0, tsla2.warnings.join("\n"));
 assert.equal(r.totals.callPremium, 2603.5);
@@ -92,7 +98,7 @@ assert.equal(sndk.lifetime.putPremium, 2999);
 assert.equal(sndk.lot.callPremium, 3999 - 6001 + 8999);
 // The 1490 put delivered the shares: its 2999 is folded into the cost basis (Kyle 9/3),
 // so basis = 149000 − 2999 and the lot's put column stays 0 (no double count).
-assert.equal(sndk.seedPutPremium, 2999);
+assert.equal(sndk.assignedPutPremium, 2999);
 assert.equal(sndk.totalCost, 146001);
 assert.equal(sndk.rawAvgCost, 1460.01);
 assert.equal(sndk.lot.putPremium, 0);
@@ -121,10 +127,11 @@ assert.equal(crclAll.sharesHeld, 1100);
 assert.equal(crclAll.lotStart, "2026-06-15 10:00:00"); // the buy started the lot
 assert.equal(crclAll.lot.callPremium, 2993.5);
 assert.equal(crclAll.warnings.length, 0, crclAll.warnings.join("\n"));
+assert.equal(crclAll.rawAvgCost, Math.round(((98001 - 1993.5) / 1100) * 10000) / 10000);
 const buyKey = crclAll.stockFills.find((f) => f.quantity === 100)!.fillKey;
 const crclEx = buildReport([crclStmt], {}, new Set([buyKey])).tickers[0];
 assert.equal(crclEx.sharesHeld, 1000);
-assert.equal(crclEx.seedPutPremium, 1993.5);
+assert.equal(crclEx.assignedPutPremium, 1993.5);
 assert.equal(crclEx.totalCost, 90000 - 1993.5);
 assert.equal(crclEx.rawAvgCost, 88.0065);
 assert.equal(crclEx.lotStart, "2026-07-08 16:20:00"); // now the assignment starts the lot
@@ -133,9 +140,10 @@ assert.equal(crclEx.lot.putPremium, 0); // the delivering put lives in the cost 
 assert.equal(crclEx.lot.adjustedAvgCost, (90000 - 1993.5 - 2993.5) / 1000);
 // With the 100-share buy counted, the lot started at that BUY, so the later put assignment is just an add: not a seed.
 assert.equal(crclAll.legs.find((l) => l.right === "P")!.lotSeed, false);
-assert.equal(crclAll.lot.putPremium, 1993.5); // ...but it was sold inside the lot anyway
-assert.equal(crclAll.seedPutPremium, 0);
-assert.equal(crclAll.totalCost, 98001);
+assert.equal(crclAll.lot.putPremium, 0); // ...but it was assigned inside the lot, so IBKR-style it goes into the basis
+assert.equal(crclAll.assignedPutPremium, 1993.5);
+assert.equal(crclAll.totalCost, 98001 - 1993.5);
+assert.equal(crclAll.legs.find((l) => l.right === "P")!.basisPut, true);
 assert.equal(crclEx.stockFills.find((f) => f.quantity === 100)!.excluded, true);
 assert.equal(crclEx.warnings.length, 0, crclEx.warnings.join("\n")); // IBKR's 1100 still reconciles (1000 + 100 excluded)
 console.log("EXCLUDE FILL PASS");
@@ -167,7 +175,7 @@ console.log("STRADDLE PASS");
 const abc = buildReport([parseStatementCsv(fx("seed-nextday.csv"), "seed-nextday.csv")]).tickers[0];
 assert.equal(abc.lotStart, "2026-07-09 09:30:00");
 assert.equal(abc.legs.find((l) => l.right === "P")!.lotSeed, true);
-assert.equal(abc.seedPutPremium, 299);
+assert.equal(abc.assignedPutPremium, 299);
 assert.equal(abc.totalCost, 5000 - 299);
 assert.equal(abc.lot.putPremium, 0);
 assert.equal(abc.lot.callPremium, 199);
@@ -183,12 +191,13 @@ const hood = buildReport([rh]).tickers.find((t) => t.ticker === "HOOD")!;
 assert.equal(hood.sharesHeld, 300);
 // 100 bought 6/1 started the lot (so the 7/16 assignment is an add, not a seed)
 assert.equal(hood.lotStart!.slice(0, 10), "2026-06-01");
-assert.equal(hood.seedPutPremium, 0);
-assert.equal(hood.totalCost, 9500 + 22000);
+assert.equal(hood.assignedPutPremium, 499.96);
+assert.equal(hood.totalCost, 9500 + 22000 - 499.96);
 assert.equal(hood.stockFills.find((f) => f.quantity === 200)!.isAssignment, true);
 // calls: 149.98 expired + (599.96 − 1200.04) rolled + 819.96 open
 assert.equal(hood.lifetime.callPremium, Math.round((149.98 + 599.96 - 1200.04 + 819.96) * 100) / 100);
 assert.equal(hood.lifetime.putPremium, 499.96);
+assert.equal(hood.lot.putPremium, 0);
 assert.equal(hood.lot.callPremium, hood.lifetime.callPremium);
 const rhLegs = Object.fromEntries(hood.legs.map((l) => [l.key, l.outcome]));
 assert.equal(rhLegs["HOOD|C|100|2026-06-19"], "expired");

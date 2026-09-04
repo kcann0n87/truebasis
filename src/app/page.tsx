@@ -84,7 +84,10 @@ function StartingPositionForm({
   const [avgCost, setAvgCost] = useState(t.startingPosition ? String(t.startingPosition.avgCost) : "");
   return (
     <div className="bg-gray-900/60 border border-gray-800 rounded p-3 text-xs">
-      <div className="text-gray-300 font-semibold mb-1">Starting position (before your earliest statement)</div>
+      <div className="text-gray-300 font-semibold mb-1">
+        Starting position (before your earliest statement)
+        {t.startingPositionSource === "estimated" && <span className="ml-2 font-normal text-gray-500">currently estimated from the broker&apos;s cost basis</span>}
+      </div>
       <div className="text-gray-500 mb-2">
         Only for shares bought <em>before</em> the first uploaded statement, where the broker never shows the buy.
         Shares bought inside the statements are already counted — untick a fill&apos;s Count box to leave one out instead.
@@ -114,7 +117,7 @@ function StartingPositionForm({
         >
           Save
         </button>
-        {t.startingPosition && (
+        {t.startingPositionSource === "manual" && (
           <button
             onClick={() => { onSave(t.ticker, null); setShares(""); setAvgCost(""); }}
             className="px-3 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300"
@@ -158,6 +161,16 @@ function TickerDetail({
         </div>
       )}
 
+      {t.notes.length > 0 && (
+        <div className="space-y-1">
+          {t.notes.map((nt, i) => (
+            <div key={i} className="text-xs text-gray-400 bg-gray-900/60 border border-gray-800 rounded px-2 py-1">
+              ℹ {nt}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <Stat
           label="Shares held"
@@ -169,7 +182,7 @@ function TickerDetail({
           value={t.sharesHeld > 0 ? money(t.totalCost - prem) : "—"}
           hint={
             t.sharesHeld > 0
-              ? `cost basis ${money(t.totalCost)} (${money(t.rawAvgCost, 4)}/sh${t.seedPutPremium ? `, incl. ${money(t.seedPutPremium)} put premium` : ""})` +
+              ? `cost basis ${money(t.totalCost)} (${money(t.rawAvgCost, 4)}/sh${t.assignedPutPremium ? `, incl. ${money(t.assignedPutPremium)} assigned-put premium` : ""})` +
                 (t.ibkrOpenCostBasis && t.ibkrOpenQty ? ` · broker statement: ${money(t.ibkrOpenCostBasis)} (${money(t.ibkrOpenCostBasis / t.ibkrOpenQty, 2)}/sh)` : "") +
                 ` · adj. ${money(adj, 4)}/sh`
               : undefined
@@ -208,7 +221,7 @@ function TickerDetail({
               <tbody className="divide-y divide-gray-800/60">
                 {t.legs.map((l) => {
                   const counted = lotActive ? l.inLot : true;
-                  const net = lotActive && !l.lotSeed ? l.lotNetPremium : l.netPremium;
+                  const net = lotActive && !l.basisPut ? l.lotNetPremium : l.netPremium;
                   return (
                     <tr key={l.key} className={`hover:bg-gray-900/40 ${counted ? "" : "opacity-40"}`}>
                       <Td cls="text-gray-100">
@@ -234,7 +247,7 @@ function TickerDetail({
                       <Td right cls="text-gray-300">{l.closeDebit ? money(l.closeDebit) : "—"}</Td>
                       <Td right cls={`font-bold ${pnlClass(net)}`}>
                         {signed(net)}
-                        {l.lotSeed && lotActive && <span className="text-gray-500 font-normal" title="Folded into the cost basis rather than the premium column"> → basis</span>}
+                        {l.basisPut && lotActive && <span className="text-gray-500 font-normal" title="Assigned put: folded into the cost basis rather than the premium column"> → basis</span>}
                       </Td>
                       <td className="px-2 py-1.5">
                         <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded font-semibold ${OUTCOME_STYLE[l.outcome]}`}>
@@ -334,6 +347,7 @@ export default function Home() {
   const [includePuts, setIncludePuts] = useState(true);
   const [sinceLot, setSinceLot] = useState(true);
   const [showFlat, setShowFlat] = useState(false);
+  const [showNoOptions, setShowNoOptions] = useState(false);
   const [remember, setRemember] = useState(false);
   const [isDemo, setIsDemo] = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -462,8 +476,10 @@ export default function Home() {
   };
 
   const isActive = (t: CcTickerSummary) => t.sharesHeld > 0 || t.openCalls > 0 || t.openPuts > 0;
-  const tickers = (report?.tickers ?? []).filter((t) => showFlat || isActive(t));
-  const flatCount = (report?.tickers ?? []).filter((t) => !isActive(t)).length;
+  const hasOptions = (t: CcTickerSummary) => t.legs.length > 0;
+  const tickers = (report?.tickers ?? []).filter((t) => (showFlat || isActive(t)) && (showNoOptions || hasOptions(t)));
+  const flatCount = (report?.tickers ?? []).filter((t) => !isActive(t) && (showNoOptions || hasOptions(t))).length;
+  const noOptionsCount = (report?.tickers ?? []).filter((t) => !hasOptions(t) && (showFlat || isActive(t))).length;
   const windowOf = (t: CcTickerSummary): CcPremiumWindow => (sinceLot ? t.lot : t.lifetime);
   const totals = sinceLot ? report?.lotTotals : report?.totals;
   const totalPremium = includePuts ? totals?.netPremium : totals?.callPremium;
@@ -579,7 +595,7 @@ export default function Home() {
       {report && report.tickers.length > 0 && totals && (
         <div className="px-3 sm:px-6 py-4 border-b border-gray-800">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <Stat label="Call premium" value={signed(totals.callPremium)} cls={pnlClass(totals.callPremium)} hint={sinceLot ? "current lots · net of buybacks + commissions" : "all history · net of buybacks + commissions"} />
+            <Stat label="Call premium" value={signed(totals.callPremium)} cls={pnlClass(totals.callPremium)} hint={sinceLot ? "stocks you hold, current lots · net of buybacks + commissions" : "all history, every name · net of buybacks + commissions"} />
             <Stat label="Put premium" value={signed(totals.putPremium)} cls={pnlClass(totals.putPremium)} hint="net of buybacks + commissions" />
             <Stat label="Stock realized" value={signed(totals.stockRealizedPnl)} cls={pnlClass(totals.stockRealizedPnl)} hint="sells + assignments" />
             <Stat
@@ -608,6 +624,10 @@ export default function Home() {
             <label className="flex items-center gap-1.5 cursor-pointer select-none">
               <input type="checkbox" checked={showFlat} onChange={(e) => setShowFlat(e.target.checked)} />
               Show closed-out names{flatCount > 0 ? ` (${flatCount})` : ""}
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer select-none" title="Stocks in the statements with no option trades against them (index funds, dividend reinvestments, …)">
+              <input type="checkbox" checked={showNoOptions} onChange={(e) => setShowNoOptions(e.target.checked)} />
+              Show stocks with no options{noOptionsCount > 0 ? ` (${noOptionsCount})` : ""}
             </label>
           </div>
         </div>
@@ -666,8 +686,8 @@ export default function Home() {
                         <Td right cls="text-gray-300">{premPct == null ? "—" : `${premPct.toFixed(1)}%`}</Td>
                         <Td right cls="text-gray-300">
                           {t.sharesHeld > 0 ? (
-                            <span title={t.seedPutPremium ? `strike cost ${money(t.totalCost + t.seedPutPremium)} − ${money(t.seedPutPremium)} put premium` : undefined}>
-                              {money(t.totalCost)}{t.seedPutPremium ? <span className="text-emerald-500">*</span> : null}
+                            <span title={t.assignedPutPremium ? `strike cost ${money(t.totalCost + t.assignedPutPremium)} − ${money(t.assignedPutPremium)} assigned-put premium` : undefined}>
+                              {money(t.totalCost)}{t.assignedPutPremium ? <span className="text-emerald-500">*</span> : null}
                             </span>
                           ) : "—"}
                         </Td>

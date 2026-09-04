@@ -97,6 +97,11 @@ export interface CcOptionLeg {
   // it counts toward the lot (Kyle 9/3: "include the premium from the
   // original put in the cost basis").
   lotSeed: boolean;
+  // Assigned put whose shares are in the current lot (the seed put, or a put
+  // assigned as an add inside the lot). Its premium is netted into the cost
+  // basis — exactly how IBKR's AVG PX treats assigned stock — rather than
+  // shown in the lot's premium column.
+  basisPut: boolean;
   fills: CcTrade[];
 }
 
@@ -134,10 +139,11 @@ export interface CcTickerSummary {
   ticker: string;
   sharesHeld: number;
   // Cost basis of the shares held (average-cost method) AFTER netting the
-  // premium of the put whose assignment delivered them (seedPutPremium) —
-  // i.e. strike × shares − put credit, the price actually paid (Kyle 9/3).
+  // premium of every assigned put that delivered shares into the current lot
+  // (assignedPutPremium) — strike × shares − put credits, the price actually
+  // paid, matching IBKR's AVG PX (Kyle 9/3, verified on a real statement).
   totalCost: number;
-  seedPutPremium: number; // premium already folded into totalCost (0 if the lot began with a plain buy)
+  assignedPutPremium: number; // premium already folded into totalCost (0 if no put was assigned into this lot)
   rawAvgCost: number | null; // totalCost / shares
   // When the CURRENT lot of shares started — the fill that took the position
   // from 0 to >0 (a buy, or a put assignment). Undefined when the shares were
@@ -153,8 +159,13 @@ export interface CcTickerSummary {
   legs: CcOptionLeg[];
   stockFills: CcStockFill[];
   startingPosition?: CcStartingPosition;
+  // "manual": entered by the user. "estimated": no override, but the broker's
+  // earliest statement showed shares already held, so they were seeded at the
+  // broker's own cost price from its latest Open Positions.
+  startingPositionSource?: "manual" | "estimated";
   // Warnings about incomplete history etc.
   warnings: string[];
+  notes: string[]; // informational (e.g. the estimated starting position)
   // What IBKR says the position is at the end of the latest statement
   ibkrOpenQty?: number;
   ibkrOpenCostBasis?: number;
@@ -300,7 +311,7 @@ export function parseRobinhoodCsv(text: string, fileName = "statement.csv"): CcS
 }
 
 export function parseIbkrCsv(text: string, fileName = "statement.csv"): CcStatement {
-  const lines = text.split(/\r?\n/);
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/); // IBKR exports start with a BOM
   const headers: Record<string, string[]> = {};
   const meta: Record<string, string> = {};
   const trades: CcTrade[] = [];
@@ -480,6 +491,7 @@ export function buildReport(
   for (const [ticker, tt] of byTicker) {
     const override = overrides[ticker];
     const warnings: string[] = [];
+    const notes: string[] = [];
 
     // ── Stock: average-cost running position ──
     let shares = 0;
@@ -490,13 +502,36 @@ export function buildReport(
     // if there's no starting-position override and IBKR's earliest statement
     // says no shares were held coming in. Otherwise the current lot predates
     // the history and its window is the whole history.
-    let knownFlat = !(override && override.shares > 0) && !(priorQty > 0);
+    // Starting position: the user's override wins; otherwise, if the broker's
+    // earliest statement says shares were already held, seed them at the
+    // broker's cost price from its latest Open Positions (exact when nothing
+    // was sold in the period, close otherwise — IBKR's own cost basis).
+    let startPos: CcStartingPosition | undefined = override && override.shares > 0 ? override : undefined;
+    let startSource: "manual" | "estimated" | undefined = startPos ? "manual" : undefined;
+    const ibkrPos = latestByTicker.get(ticker);
+    if (!startPos && ibkrPos && ibkrPos.quantity > 0 && ibkrPos.costBasis > 0) {
+      // Shares the broker says are held now that the uploaded fills don't
+      // account for: held before the earliest statement, or transferred in
+      // (transfers aren't in the Trades section — CAVA on Kyle's statement).
+      const netTraded = tt.filter((t) => t.asset === "stock" && !excludedFills.has(tradeKey(t))).reduce((sum, t) => sum + t.quantity, 0);
+      const missing = Math.round((ibkrPos.quantity - netTraded) * 10000) / 10000;
+      if (missing > 0) {
+        startPos = { shares: missing, avgCost: round4(ibkrPos.costBasis / ibkrPos.quantity) };
+        startSource = "estimated";
+        notes.push(
+          `${missing} share${missing === 1 ? "" : "s"} in the broker's latest position aren't explained by the uploaded fills ` +
+            `(held before the earliest statement, or transferred in); started them at the broker's cost price of ` +
+            `$${startPos.avgCost.toFixed(4)}/sh. Enter a starting position below to override.`,
+        );
+      }
+    }
+    let knownFlat = !startPos && !(priorQty > 0);
     let lotStart: string | undefined;
     let lotStartedByAssignment = false;
     let lotStockRealized = 0;
-    if (override && override.shares > 0) {
-      shares = override.shares;
-      totalCost = override.shares * override.avgCost;
+    if (startPos) {
+      shares = startPos.shares;
+      totalCost = startPos.shares * startPos.avgCost;
     }
     const stockFills: CcStockFill[] = [];
     let excludedQty = 0; // net shares in excluded fills, so the IBKR cross-check still lines up
@@ -616,6 +651,7 @@ export function buildReport(
           lotNetPremium: 0,
           inLot: false,
           lotSeed: false,
+          basisPut: false,
           fills: [],
         };
         legMap.set(key, leg);
@@ -670,11 +706,20 @@ export function buildReport(
       const soldAll = leg.fills.filter((f) => f.codes.includes("O") && f.quantity < 0);
       const sold = soldAll.reduce((s, f) => s + -f.quantity, 0);
       const soldLot = leg.inLot ? sold : 0;
-      // The put that delivered the lot goes into the cost basis, not the
-      // lot's premium column (it would be double counted otherwise). It still
-      // counts in the all-history window, which is computed against the
-      // pre-put basis.
-      if (leg.lotSeed) leg.lotNetPremium = 0;
+      // Every assigned put whose shares landed in the current lot goes into
+      // the cost basis, not the lot's premium column (it would be double
+      // counted otherwise). It still counts in the all-history window, which
+      // is computed against the gross cost. Verified against IBKR's AVG PX on
+      // a real statement (CRCL: buy 100, then 1000 assigned — IBKR nets the
+      // put into the basis even though the lot began with the buy).
+      leg.basisPut =
+        leg.right === "P" &&
+        leg.outcome === "assigned" &&
+        (leg.lotSeed || leg.fills.some((f) => f.codes.includes("A") && inLot(f.dateTime)));
+      if (leg.basisPut) {
+        leg.inLot = true;
+        leg.lotNetPremium = 0;
+      }
       if (leg.right === "C") {
         life.callPremium += leg.netPremium;
         lot.callPremium += leg.lotNetPremium;
@@ -703,7 +748,7 @@ export function buildReport(
           `to leave a purchase out of the position, untick its Count box instead.`,
       );
     }
-    if (!override && priorQty > 0) {
+    if (!startPos && priorQty > 0) {
       warnings.push(
         `IBKR shows ${priorQty} share${Math.abs(priorQty) === 1 ? "" : "s"} already held before your earliest ` +
           `statement${earliest?.periodStart ? ` (${earliest.periodStart})` : ""}. ` +
@@ -720,10 +765,10 @@ export function buildReport(
     }
 
     const has = shares > 0;
-    // Fold the delivering put's premium into the basis of the shares held.
-    const seedPutPremium = has ? round2(legs.filter((l) => l.lotSeed).reduce((sum, l) => sum + l.netPremium, 0)) : 0;
-    const grossCost = totalCost; // strike × shares (+ commissions) before the put credit
-    totalCost = round2(totalCost - seedPutPremium);
+    // Fold assigned-put premium into the basis of the shares held.
+    const assignedPutPremium = has ? round2(legs.filter((l) => l.basisPut).reduce((sum, l) => sum + l.netPremium, 0)) : 0;
+    const grossCost = totalCost; // strike × shares (+ commissions) before the put credits
+    totalCost = round2(totalCost - assignedPutPremium);
     const window = (w: typeof life, realized: number, basis: number): CcPremiumWindow => {
       const callPremium = round2(w.callPremium);
       const putPremium = round2(w.putPremium);
@@ -752,7 +797,7 @@ export function buildReport(
       ticker,
       sharesHeld: shares,
       totalCost,
-      seedPutPremium,
+      assignedPutPremium,
       rawAvgCost: has ? round4(totalCost / shares) : null,
       lotStart: has ? lotStart : undefined,
       lifetime,
@@ -763,8 +808,10 @@ export function buildReport(
       lastTradeAt: tt[tt.length - 1]?.dateTime,
       legs,
       stockFills,
-      startingPosition: override,
+      startingPosition: startPos,
+      startingPositionSource: startSource,
       warnings,
+      notes,
       ibkrOpenQty: ibkrOpen?.quantity,
       ibkrOpenCostBasis: ibkrOpen?.costBasis,
     });
@@ -778,9 +825,10 @@ export function buildReport(
     return b.lot.netPremium - a.lot.netPremium;
   });
 
-  const sumTotals = (pick: (t: CcTickerSummary) => CcPremiumWindow): CcTotals => {
+  const sumTotals = (pick: (t: CcTickerSummary) => CcPremiumWindow, only?: (t: CcTickerSummary) => boolean): CcTotals => {
     const acc: CcTotals = { callPremium: 0, putPremium: 0, netPremium: 0, stockRealizedPnl: 0 };
     for (const t of tickers) {
+      if (only && !only(t)) continue;
       const w = pick(t);
       acc.callPremium += w.callPremium;
       acc.putPremium += w.putPremium;
@@ -791,7 +839,9 @@ export function buildReport(
     return acc;
   };
   const totals = sumTotals((t) => t.lifetime);
-  const lotTotals = sumTotals((t) => t.lot);
+  // "Current lots" totals cover only stocks currently held — closed-out names
+  // (and pure option flips on stocks never owned) would swamp them otherwise.
+  const lotTotals = sumTotals((t) => t.lot, (t) => t.sharesHeld > 0);
 
   return {
     statements: sorted.map((s) => ({
