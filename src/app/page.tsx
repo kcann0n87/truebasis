@@ -14,6 +14,8 @@ import {
 import Link from "next/link";
 import { clearStored, loadStored, saveStored } from "@/lib/local-store";
 import { DEMO_STATEMENTS } from "@/lib/demo";
+import { FAQ } from "@/lib/site";
+import { FaqSchema } from "@/components/FaqSchema";
 import { Referrals } from "@/components/Referrals";
 import { ReferralBanner } from "@/components/ReferralBanner";
 import { AdSlot } from "@/components/AdSlot";
@@ -773,6 +775,21 @@ export default function Home() {
               and the price where you break even.
             </li>
           </ol>
+        </section>
+      )}
+
+      {!report && (
+        <section className="px-3 sm:px-6 py-4 border-t border-gray-800">
+          <FaqSchema />
+          <h2 className="text-sm font-semibold text-gray-200 mb-2">Common questions</h2>
+          <div className="space-y-2 max-w-3xl">
+            {FAQ.map((f) => (
+              <details key={f.q} className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3">
+                <summary className="text-sm font-semibold text-gray-200 cursor-pointer">{f.q}</summary>
+                <p className="text-xs text-gray-400 mt-2 leading-relaxed">{f.a}</p>
+              </details>
+            ))}
+          </div>
         </section>
       )}
 

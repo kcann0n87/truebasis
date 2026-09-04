@@ -17,10 +17,20 @@ export function GuideLayout({ meta, children }: { meta: GuideMeta; children: Rea
     author: { "@type": "Organization", name: SITE_NAME, url: SITE_URL },
     publisher: { "@type": "Organization", name: SITE_NAME, url: SITE_URL },
   };
+  const breadcrumbs = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: SITE_NAME, item: SITE_URL },
+      { "@type": "ListItem", position: 2, name: "Guides", item: `${SITE_URL}/guides` },
+      { "@type": "ListItem", position: 3, name: meta.title, item: url },
+    ],
+  };
   const related = GUIDES.filter((g) => g.slug !== meta.slug);
   return (
     <main className="min-h-screen bg-gray-950 text-gray-200">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbs) }} />
       <div className="bg-gray-900 border-b border-gray-800 px-4 sm:px-8 py-3 flex items-center gap-3 text-xs">
         <Link href="/" className="px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300">← {SITE_NAME}</Link>
         <Link href="/guides" className="text-gray-400 hover:text-gray-200">Guides</Link>
