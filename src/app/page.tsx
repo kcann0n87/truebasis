@@ -19,6 +19,9 @@ import { FaqSchema } from "@/components/FaqSchema";
 import { Referrals } from "@/components/Referrals";
 import { ReferralBanner } from "@/components/ReferralBanner";
 import { AdSlot } from "@/components/AdSlot";
+import { DonatePanel } from "@/components/DonateButton";
+import { SiteFooter } from "@/components/SiteFooter";
+import { SiteHeader } from "@/components/SiteHeader";
 
 // OptionBasis — upload a brokerage activity statement, see per stock how much
 // option premium you've collected and what the shares really cost you.
@@ -64,6 +67,52 @@ function Td({ children, right, cls }: { children: ReactNode; right?: boolean; cl
     <td className={`px-2 py-1.5 font-mono text-xs whitespace-nowrap ${right ? "text-right" : "text-left"} ${cls ?? ""}`}>
       {children}
     </td>
+  );
+}
+
+// Columns the by-stock table can be sorted on. `null` keeps the order the
+// report produced (largest position first).
+type SortKey =
+  | "ticker" | "shares" | "lot" | "cost" | "call" | "put"
+  | "premPct" | "basis" | "adjBasis" | "adj" | "be" | "open" | "written";
+interface Sort { key: SortKey | null; dir: "asc" | "desc" }
+
+// A table row with everything the current toggles imply already worked out,
+// so the table, the mobile cards, the sort and the CSV export all agree.
+interface Row {
+  t: CcTickerSummary;
+  w: CcPremiumWindow;
+  prem: number; // premium counted toward basis under the current toggles
+  adj: number | null; // adjusted cost per share
+  be: number | null; // break-even per share
+  premPct: number | null;
+  adjBasis: number | null;
+}
+
+function SortTh({
+  k, sort, onSort, children, right, title, sticky,
+}: {
+  k: SortKey;
+  sort: Sort;
+  onSort: (k: SortKey) => void;
+  children: ReactNode;
+  right?: boolean;
+  title?: string;
+  sticky?: boolean; // pins with the column below it while the table scrolls
+}) {
+  const active = sort.key === k;
+  return (
+    <th
+      title={title}
+      onClick={() => onSort(k)}
+      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
+      className={`px-2 py-1.5 text-[10px] uppercase tracking-wider font-semibold whitespace-nowrap cursor-pointer select-none hover:text-gray-200 ${
+        active ? "text-emerald-400" : "text-gray-500"
+      } ${right ? "text-right" : "text-left"} ${sticky ? "sticky left-0 z-10 bg-gray-900" : ""}`}
+    >
+      {children}
+      <span className={active ? "" : "text-gray-700"}>{active ? (sort.dir === "asc" ? " ▲" : " ▼") : " ⇅"}</span>
+    </th>
   );
 }
 
@@ -352,6 +401,7 @@ export default function Home() {
   const [showNoOptions, setShowNoOptions] = useState(false);
   const [remember, setRemember] = useState(false);
   const [isDemo, setIsDemo] = useState(false);
+  const [sort, setSort] = useState<Sort>({ key: null, dir: "desc" });
   const [hydrated, setHydrated] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -479,41 +529,146 @@ export default function Home() {
 
   const isActive = (t: CcTickerSummary) => t.sharesHeld > 0 || t.openCalls > 0 || t.openPuts > 0;
   const hasOptions = (t: CcTickerSummary) => t.legs.length > 0;
-  const tickers = (report?.tickers ?? []).filter((t) => (showFlat || isActive(t)) && (showNoOptions || hasOptions(t)));
   const flatCount = (report?.tickers ?? []).filter((t) => !isActive(t) && (showNoOptions || hasOptions(t))).length;
   const noOptionsCount = (report?.tickers ?? []).filter((t) => !hasOptions(t) && (showFlat || isActive(t))).length;
-  const windowOf = (t: CcTickerSummary): CcPremiumWindow => (sinceLot ? t.lot : t.lifetime);
   const totals = sinceLot ? report?.lotTotals : report?.totals;
   const totalPremium = includePuts ? totals?.netPremium : totals?.callPremium;
 
+  // One derived row per visible stock, then sorted. Everything downstream —
+  // the table, the mobile cards and the CSV — reads these, so they can't drift.
+  const rows: Row[] = useMemo(() => {
+    const visible = (report?.tickers ?? []).filter(
+      (t) => (showFlat || isActive(t)) && (showNoOptions || hasOptions(t)),
+    );
+    const built = visible.map((t) => {
+      const w = sinceLot ? t.lot : t.lifetime;
+      const prem = includePuts ? w.netPremium : w.callPremium;
+      return {
+        t,
+        w,
+        prem,
+        adj: includePuts ? w.adjustedAvgCost : w.adjustedAvgCostCallsOnly,
+        be: includePuts ? w.breakEven : w.breakEvenCallsOnly,
+        premPct: t.totalCost > 0 ? (prem / t.totalCost) * 100 : null,
+        adjBasis: t.sharesHeld > 0 ? t.totalCost - prem : null,
+      };
+    });
+    if (!sort.key) return built;
+    const key = sort.key;
+    // Sort keys that read as text; everything else is compared as a number,
+    // with blanks pushed to the bottom whichever way the column is pointing.
+    const textOf = (r: Row) => (key === "ticker" ? r.t.ticker : key === "lot" ? (r.t.lotStart ?? "") : null);
+    const numOf = (r: Row): number | null => {
+      switch (key) {
+        case "shares": return r.t.sharesHeld;
+        case "cost": return r.t.rawAvgCost;
+        case "call": return r.w.callPremium;
+        case "put": return r.w.putPremium;
+        case "premPct": return r.premPct;
+        case "basis": return r.t.sharesHeld > 0 ? r.t.totalCost : null;
+        case "adjBasis": return r.adjBasis;
+        case "adj": return r.adj;
+        case "be": return r.be;
+        case "open": return r.t.openCalls + r.t.openPuts;
+        case "written": return r.w.callsWritten + r.w.putsWritten;
+        default: return null;
+      }
+    };
+    const flip = sort.dir === "asc" ? 1 : -1;
+    return [...built].sort((a, b) => {
+      const ta = textOf(a);
+      if (ta !== null) return ta.localeCompare(textOf(b)!) * flip;
+      const na = numOf(a);
+      const nb = numOf(b);
+      if (na == null && nb == null) return 0;
+      if (na == null) return 1;
+      if (nb == null) return -1;
+      return (na - nb) * flip;
+    });
+  }, [report, showFlat, showNoOptions, sinceLot, includePuts, sort]);
+
+  // First click on a column sorts biggest-first (descending), which is what
+  // you want on every money column; the name column starts A→Z.
+  const toggleSort = (k: SortKey) =>
+    setSort((prev) => (prev.key === k ? { key: k, dir: prev.dir === "asc" ? "desc" : "asc" } : { key: k, dir: k === "ticker" ? "asc" : "desc" }));
+
+  // Download what's on screen. Same columns, same order, same toggles — so a
+  // spreadsheet built from this matches what the page showed.
+  const exportCsv = () => {
+    const head = [
+      "Stock", "Shares", "Lot start", "Cost per share", "Call premium", "Put premium",
+      "Premium % of basis", "Cost basis", "Adjusted basis", "Adjusted cost per share",
+      "Break-even", "Open calls", "Open puts", "Calls written", "Puts written",
+    ];
+    const num = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? "" : String(Math.round(n * 10000) / 10000));
+    const body = rows.map((r) => [
+      r.t.ticker,
+      String(r.t.sharesHeld),
+      r.t.sharesHeld > 0 ? (r.t.lotStart ? r.t.lotStart.slice(0, 10) : "before history") : "",
+      num(r.t.rawAvgCost),
+      num(r.w.callPremium),
+      num(r.w.putPremium),
+      r.premPct == null ? "" : r.premPct.toFixed(2),
+      r.t.sharesHeld > 0 ? num(r.t.totalCost) : "",
+      num(r.adjBasis),
+      num(r.adj),
+      num(r.be),
+      String(r.t.openCalls),
+      String(r.t.openPuts),
+      String(r.w.callsWritten),
+      String(r.w.putsWritten),
+    ]);
+    const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const csv = [head, ...body].map((line) => line.map(esc).join(",")).join("\r\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `optionbasis-${sinceLot ? "current-lots" : "all-history"}-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
-      {/* Header */}
-      <div className="bg-gray-900 border-b border-gray-800 px-3 sm:px-6 py-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-emerald-400">OptionBasis</h1>
-            <p className="text-sm text-gray-400 mt-1 max-w-3xl">
-              Drop in a brokerage activity statement. For each stock you own, see how much option premium you&apos;ve
-              collected against it and what the shares <span className="text-gray-200">really</span> cost you after that premium.
+      <SiteHeader
+        current="home"
+        actions={
+          <button
+            onClick={loadDemo}
+            className="text-xs px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold whitespace-nowrap"
+            title="Load a set of made-up statements so you can see what the tool does"
+          >
+            Try the demo
+          </button>
+        }
+      />
+
+      {/* Hero. Collapses to a single line once a statement is loaded so the
+          numbers get the screen. */}
+      <div className="bg-gray-900 border-b border-gray-800 px-3 sm:px-6 py-4 sm:py-6">
+        <h1 className="text-xl sm:text-3xl font-extrabold text-gray-100 tracking-tight max-w-3xl">
+          What your shares <span className="text-emerald-400">really</span> cost, after option premium
+        </h1>
+        {!report ? (
+          <>
+            <p className="text-sm text-gray-400 mt-2 max-w-2xl leading-relaxed">
+              Drop in an Interactive Brokers or Robinhood activity statement. For every stock you hold, OptionBasis nets
+              the calls you sold, the buybacks, the rolls and the put that got you assigned against the shares — and
+              tells you the adjusted cost per share and the price where you break even.
             </p>
-            <p className="text-xs text-gray-500 mt-1">
-              Runs entirely in your browser — the statement is never uploaded anywhere. Refresh and it&apos;s gone.
-            </p>
-          </div>
-          <div className="shrink-0 flex items-center gap-2">
-            <Link href="/guides" className="text-xs px-3 py-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 font-semibold">
-              Guides
-            </Link>
-            <button
-              onClick={loadDemo}
-              className="text-xs px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold"
-              title="Load a set of made-up statements so you can see what the tool does"
-            >
-              Try the demo
-            </button>
-          </div>
-        </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-gray-500">
+              <span className="text-emerald-400">✓ Free, no account</span>
+              <span className="text-emerald-400">✓ Nothing is uploaded — it runs in your browser</span>
+              <span className="text-emerald-400">✓ Refresh and it&apos;s gone</span>
+            </div>
+          </>
+        ) : (
+          <p className="text-xs text-gray-500 mt-1.5">
+            Parsed in your browser. Nothing was uploaded.
+          </p>
+        )}
       </div>
 
       {/* Upload */}
@@ -618,7 +773,19 @@ export default function Home() {
       {/* Per-ticker table */}
       <div className="px-3 sm:px-6 py-4">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-          <div className="text-sm font-semibold text-gray-200">By stock {report ? `(${tickers.length})` : ""}</div>
+          <div className="flex items-center gap-3">
+            <div className="text-sm font-semibold text-gray-200">By stock {report ? `(${rows.length})` : ""}</div>
+            {rows.length > 0 && (
+              <button
+                onClick={exportCsv}
+                className="text-[11px] px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 font-semibold"
+                title="Download the table exactly as shown — same columns, same toggles. Built in your browser."
+              >
+                ↓ CSV
+              </button>
+            )}
+          </div>
+          {report && (
           <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400">
             <label className="flex items-center gap-1.5 cursor-pointer select-none" title="Only count contracts sold since the fill that started the current lot of shares (e.g. since the put assignment that delivered them). Off = everything in the uploaded statements.">
               <input type="checkbox" checked={sinceLot} onChange={(e) => setSinceLot(e.target.checked)} />
@@ -637,6 +804,7 @@ export default function Home() {
               Show stocks with no options{noOptionsCount > 0 ? ` (${noOptionsCount})` : ""}
             </label>
           </div>
+          )}
         </div>
 
         {!report ? (
@@ -645,87 +813,161 @@ export default function Home() {
           </div>
         ) : report.tickers.length === 0 ? (
           <div className="text-sm text-gray-500 italic py-6 text-center">No stock or option trades found in the loaded statements.</div>
-        ) : tickers.length === 0 ? (
+        ) : rows.length === 0 ? (
           <div className="text-sm text-gray-500 italic py-6 text-center">
             Nothing currently held. Tick &ldquo;Show closed-out names&rdquo; to see past campaigns.
           </div>
         ) : (
-          <div className="overflow-x-auto border border-gray-800 rounded">
-            <table className="w-full">
-              <thead className="bg-gray-900/60">
-                <tr>
-                  <Th>Stock</Th>
-                  <Th right>Shares</Th>
-                  <Th title="When the current lot of shares started (the buy or assignment that took the position from 0). 'before history' = held since before the uploaded statements.">Since</Th>
-                  <Th right title="Cost per share of the shares held: what you paid, net of the premium from the put that delivered them (if any)">Cost / sh</Th>
-                  <Th right title="Net premium from calls (opens − buybacks − commissions)">Call prem</Th>
-                  <Th right title="Net premium from puts">Put prem</Th>
-                  <Th right title="Premium collected as a % of the current cost basis">Prem %</Th>
-                  <Th right title="Total cost of the shares held, net of the premium from the put that delivered them (average-cost method)">Cost basis</Th>
-                  <Th right title="Cost basis − premium collected: what the shares have really cost you">Adj. basis</Th>
-                  <Th right title="(cost basis − premium) ÷ shares held: your adjusted cost per share">Adj. cost / sh</Th>
-                  <Th right title="(cost basis − premium − realized stock P&L) ÷ shares. Sell everything here and the whole campaign nets to zero.">Break-even</Th>
-                  <Th right title="Contracts currently short">Open</Th>
-                  <Th>Calls written</Th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800/60">
-                {tickers.map((t) => {
-                  const isOpen = expanded.has(t.ticker);
-                  const w = windowOf(t);
-                  const prem = includePuts ? w.netPremium : w.callPremium;
-                  const adj = includePuts ? w.adjustedAvgCost : w.adjustedAvgCostCallsOnly;
-                  const be = includePuts ? w.breakEven : w.breakEvenCallsOnly;
-                  const premPct = t.totalCost > 0 ? (prem / t.totalCost) * 100 : null;
-                  return (
-                    <Fragment key={t.ticker}>
-                      <tr onClick={() => toggleRow(t.ticker)} className={`cursor-pointer hover:bg-gray-900/40 ${isOpen ? "bg-gray-900/30" : ""}`}>
-                        <Td cls="text-gray-100 font-bold">
-                          <span className="text-gray-500 mr-1">{isOpen ? "▾" : "▸"}</span>
-                          {t.ticker}
-                          {t.warnings.length > 0 && <span className="ml-1 text-yellow-400" title={t.warnings.join("\n")}>⚠</span>}
-                        </Td>
-                        <Td right cls="text-gray-300">{t.sharesHeld.toLocaleString()}</Td>
-                        <Td cls="text-gray-500">{t.sharesHeld > 0 ? (t.lotStart ? t.lotStart.slice(0, 10) : "before history") : "—"}</Td>
-                        <Td right cls="text-gray-300">{money(t.rawAvgCost)}</Td>
-                        <Td right cls={pnlClass(w.callPremium)}>{signed(w.callPremium)}</Td>
-                        <Td right cls={w.putPremium === 0 ? "text-gray-600" : pnlClass(w.putPremium)}>{signed(w.putPremium)}</Td>
-                        <Td right cls="text-gray-300">{premPct == null ? "—" : `${premPct.toFixed(1)}%`}</Td>
-                        <Td right cls="text-gray-300">
-                          {t.sharesHeld > 0 ? (
-                            <span title={t.assignedPutPremium ? `strike cost ${money(t.totalCost + t.assignedPutPremium)} − ${money(t.assignedPutPremium)} assigned-put premium` : undefined}>
-                              {money(t.totalCost)}{t.assignedPutPremium ? <span className="text-emerald-500">*</span> : null}
-                            </span>
-                          ) : "—"}
-                        </Td>
-                        <Td right cls="text-gray-200">{t.sharesHeld > 0 ? money(t.totalCost - prem) : "—"}</Td>
-                        <Td right cls="text-emerald-300 font-bold">
-                          {t.sharesHeld > 0 ? money(adj) : <span className="text-gray-500" title="Position closed out">flat {signed(w.totalPnlIfFlat)}</span>}
-                        </Td>
-                        <Td right cls="text-gray-200">{money(be)}</Td>
-                        <Td right cls="text-gray-300">
-                          {t.openCalls > 0 ? `${t.openCalls}C` : ""}
-                          {t.openCalls > 0 && t.openPuts > 0 ? " " : ""}
-                          {t.openPuts > 0 ? `${t.openPuts}P` : ""}
-                          {t.openCalls === 0 && t.openPuts === 0 ? "—" : ""}
-                        </Td>
-                        <Td cls="text-gray-400">
-                          {w.callsWritten} ct{w.putsWritten > 0 ? ` · ${w.putsWritten} puts` : ""}
-                        </Td>
-                      </tr>
-                      {isOpen && (
-                        <tr>
-                          <td colSpan={13} className="p-0">
-                            <TickerDetail t={t} w={w} prem={prem} adj={adj} sinceLot={sinceLot} onSaveStart={saveStart} onToggleFill={toggleFill} />
+          <>
+            {/* Phone layout: one card per stock. Thirteen columns don't fit on
+                a 390px screen, and a horizontally scrolled table is worse than
+                no table. */}
+            <div className="sm:hidden space-y-2">
+              {rows.map(({ t, w, prem, adj, be, premPct, adjBasis }) => {
+                const isOpen = expanded.has(t.ticker);
+                return (
+                  <div key={t.ticker} className="border border-gray-800 rounded-lg bg-gray-900/40 overflow-hidden">
+                    <button
+                      onClick={() => toggleRow(t.ticker)}
+                      aria-expanded={isOpen}
+                      className="w-full text-left px-3 py-2.5 hover:bg-gray-900/60"
+                    >
+                      <div className="flex items-baseline justify-between gap-2">
+                        <div className="flex items-baseline gap-1.5 min-w-0">
+                          <span className="text-gray-500">{isOpen ? "▾" : "▸"}</span>
+                          <span className="font-bold text-gray-100">{t.ticker}</span>
+                          {t.warnings.length > 0 && <span className="text-yellow-400" title={t.warnings.join("\n")}>⚠</span>}
+                          <span className="text-xs text-gray-500 truncate">
+                            {t.sharesHeld.toLocaleString()} sh
+                            {t.openCalls > 0 ? ` · ${t.openCalls}C open` : ""}
+                            {t.openPuts > 0 ? ` · ${t.openPuts}P open` : ""}
+                          </span>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="text-[10px] uppercase text-gray-500 leading-none">Adj. cost / sh</div>
+                          <div className="font-mono font-bold text-emerald-300 text-base leading-tight">
+                            {t.sharesHeld > 0 ? money(adj) : <span className="text-sm text-gray-500">flat {signed(w.totalPnlIfFlat)}</span>}
+                          </div>
+                        </div>
+                      </div>
+                      <dl className="grid grid-cols-3 gap-x-3 gap-y-1.5 mt-2.5 text-[11px]">
+                        <div>
+                          <dt className="text-gray-500 uppercase text-[9px]">Cost / sh</dt>
+                          <dd className="font-mono text-gray-300">{money(t.rawAvgCost)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-500 uppercase text-[9px]">Call prem</dt>
+                          <dd className={`font-mono ${pnlClass(w.callPremium)}`}>{signed(w.callPremium)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-500 uppercase text-[9px]">Put prem</dt>
+                          <dd className={`font-mono ${w.putPremium === 0 ? "text-gray-600" : pnlClass(w.putPremium)}`}>{signed(w.putPremium)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-500 uppercase text-[9px]">Adj. basis</dt>
+                          <dd className="font-mono text-gray-200">{money(adjBasis)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-500 uppercase text-[9px]">Break-even</dt>
+                          <dd className="font-mono text-gray-200">{money(be)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-500 uppercase text-[9px]">Prem %</dt>
+                          <dd className="font-mono text-gray-300">{premPct == null ? "—" : `${premPct.toFixed(1)}%`}</dd>
+                        </div>
+                      </dl>
+                      <div className="text-[10px] text-gray-600 mt-1.5">
+                        {w.callsWritten} call{w.callsWritten === 1 ? "" : "s"} written
+                        {w.putsWritten > 0 ? ` · ${w.putsWritten} puts` : ""}
+                        {t.sharesHeld > 0 ? ` · since ${t.lotStart ? t.lotStart.slice(0, 10) : "before history"}` : ""}
+                      </div>
+                    </button>
+                    {isOpen && (
+                      <TickerDetail t={t} w={w} prem={prem} adj={adj} sinceLot={sinceLot} onSaveStart={saveStart} onToggleFill={toggleFill} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Tablet and up: the full table. The Stock column is pinned so
+                you keep the ticker in view while scrolling right. */}
+            <div className="hidden sm:block overflow-x-auto border border-gray-800 rounded">
+              <table className="w-full">
+                <thead className="bg-gray-900">
+                  <tr>
+                    <SortTh k="ticker" sort={sort} onSort={toggleSort} sticky>Stock</SortTh>
+                    <SortTh k="shares" sort={sort} onSort={toggleSort} right>Shares</SortTh>
+                    <SortTh k="lot" sort={sort} onSort={toggleSort} title="When the current lot of shares started (the buy or assignment that took the position from 0). 'before history' = held since before the uploaded statements.">Since</SortTh>
+                    <SortTh k="cost" sort={sort} onSort={toggleSort} right title="Cost per share of the shares held: what you paid, net of the premium from the put that delivered them (if any)">Cost / sh</SortTh>
+                    <SortTh k="call" sort={sort} onSort={toggleSort} right title="Net premium from calls (opens − buybacks − commissions)">Call prem</SortTh>
+                    <SortTh k="put" sort={sort} onSort={toggleSort} right title="Net premium from puts">Put prem</SortTh>
+                    <SortTh k="premPct" sort={sort} onSort={toggleSort} right title="Premium collected as a % of the current cost basis">Prem %</SortTh>
+                    <SortTh k="basis" sort={sort} onSort={toggleSort} right title="Total cost of the shares held, net of the premium from the put that delivered them (average-cost method)">Cost basis</SortTh>
+                    <SortTh k="adjBasis" sort={sort} onSort={toggleSort} right title="Cost basis − premium collected: what the shares have really cost you">Adj. basis</SortTh>
+                    <SortTh k="adj" sort={sort} onSort={toggleSort} right title="(cost basis − premium) ÷ shares held: your adjusted cost per share">Adj. cost / sh</SortTh>
+                    <SortTh k="be" sort={sort} onSort={toggleSort} right title="(cost basis − premium − realized stock P&L) ÷ shares. Sell everything here and the whole campaign nets to zero.">Break-even</SortTh>
+                    <SortTh k="open" sort={sort} onSort={toggleSort} right title="Contracts currently short">Open</SortTh>
+                    <SortTh k="written" sort={sort} onSort={toggleSort}>Calls written</SortTh>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/60">
+                  {rows.map(({ t, w, prem, adj, be, premPct, adjBasis }) => {
+                    const isOpen = expanded.has(t.ticker);
+                    return (
+                      <Fragment key={t.ticker}>
+                        <tr onClick={() => toggleRow(t.ticker)} className={`group cursor-pointer hover:bg-gray-900/40 ${isOpen ? "bg-gray-900/30" : ""}`}>
+                          {/* Pinned so the ticker stays put while the row
+                              scrolls. It needs an opaque background, so the
+                              row's translucent hover/open tints are baked in
+                              here as the colours they composite to. */}
+                          <td className={`sticky left-0 z-10 px-2 py-1.5 font-mono text-xs whitespace-nowrap text-gray-100 font-bold group-hover:bg-[#0a1420] ${isOpen ? "bg-[#07101a]" : "bg-gray-950"}`}>
+                            <span className="text-gray-500 mr-1">{isOpen ? "▾" : "▸"}</span>
+                            {t.ticker}
+                            {t.warnings.length > 0 && <span className="ml-1 text-yellow-400" title={t.warnings.join("\n")}>⚠</span>}
                           </td>
+                          <Td right cls="text-gray-300">{t.sharesHeld.toLocaleString()}</Td>
+                          <Td cls="text-gray-500">{t.sharesHeld > 0 ? (t.lotStart ? t.lotStart.slice(0, 10) : "before history") : "—"}</Td>
+                          <Td right cls="text-gray-300">{money(t.rawAvgCost)}</Td>
+                          <Td right cls={pnlClass(w.callPremium)}>{signed(w.callPremium)}</Td>
+                          <Td right cls={w.putPremium === 0 ? "text-gray-600" : pnlClass(w.putPremium)}>{signed(w.putPremium)}</Td>
+                          <Td right cls="text-gray-300">{premPct == null ? "—" : `${premPct.toFixed(1)}%`}</Td>
+                          <Td right cls="text-gray-300">
+                            {t.sharesHeld > 0 ? (
+                              <span title={t.assignedPutPremium ? `strike cost ${money(t.totalCost + t.assignedPutPremium)} − ${money(t.assignedPutPremium)} assigned-put premium` : undefined}>
+                                {money(t.totalCost)}{t.assignedPutPremium ? <span className="text-emerald-500">*</span> : null}
+                              </span>
+                            ) : "—"}
+                          </Td>
+                          <Td right cls="text-gray-200">{money(adjBasis)}</Td>
+                          <Td right cls="text-emerald-300 font-bold">
+                            {t.sharesHeld > 0 ? money(adj) : <span className="text-gray-500" title="Position closed out">flat {signed(w.totalPnlIfFlat)}</span>}
+                          </Td>
+                          <Td right cls="text-gray-200">{money(be)}</Td>
+                          <Td right cls="text-gray-300">
+                            {t.openCalls > 0 ? `${t.openCalls}C` : ""}
+                            {t.openCalls > 0 && t.openPuts > 0 ? " " : ""}
+                            {t.openPuts > 0 ? `${t.openPuts}P` : ""}
+                            {t.openCalls === 0 && t.openPuts === 0 ? "—" : ""}
+                          </Td>
+                          <Td cls="text-gray-400">
+                            {w.callsWritten} ct{w.putsWritten > 0 ? ` · ${w.putsWritten} puts` : ""}
+                          </Td>
                         </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        {isOpen && (
+                          <tr>
+                            <td colSpan={13} className="p-0">
+                              <TickerDetail t={t} w={w} prem={prem} adj={adj} sinceLot={sinceLot} onSaveStart={saveStart} onToggleFill={toggleFill} />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
 
         {report && (
@@ -735,13 +977,15 @@ export default function Home() {
             assignment that took the position from zero. Contracts sold before that (e.g. calls written on shares you no
             longer hold) belong to the previous campaign and are left out, buybacks included. The put whose assignment
             delivered the shares is different: its premium is netted straight into the cost basis (marked *), so the
-            basis is strike × shares − that credit, and the calls written since come off that.
+            basis is strike × shares − that credit, and the calls written since come off that.{" "}
+            <Link href="/guides/put-assignment-cost-basis" className="text-gray-400 underline hover:text-gray-200">Why assigned puts work this way</Link>.
           </div>
           <div>
             <span className="text-gray-400">Adj. basis</span> = cost basis of shares held − net option premium;{" "}
             <span className="text-gray-400">Adj. cost / sh</span> = that ÷ shares held.
             Premium is net of buybacks and commissions; expired contracts keep the full credit. A roll counts
-            the buyback against the old contract and the new credit on the new one.
+            the buyback against the old contract and the new credit on the new one.{" "}
+            <Link href="/guides/rolling-covered-calls" className="text-gray-400 underline hover:text-gray-200">How rolls are tracked</Link>.
           </div>
           <div>
             <span className="text-gray-400">Break-even</span>{" "}also nets realized stock P&amp;L from shares you sold or had called away,
@@ -749,7 +993,8 @@ export default function Home() {
           </div>
           <div>
             Share cost basis uses the average-cost method, which is not what your broker reports for taxes. This is a
-            trading tool, not tax or investment advice.
+            trading tool, not tax or investment advice —{" "}
+            <Link href="/guides/covered-call-cost-basis" className="text-gray-400 underline hover:text-gray-200">the full method is written up here</Link>.
           </div>
         </div>
         )}
@@ -794,15 +1039,10 @@ export default function Home() {
       )}
 
       <AdSlot slot="below-results" />
+      {report && <DonatePanel />}
       <Referrals />
-
-      <footer className="px-3 sm:px-6 py-4 border-t border-gray-800 text-[11px] text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
-        <span>© {new Date().getFullYear()} OptionBasis</span>
-        <Link href="/guides" className="hover:text-gray-300">Guides</Link>
-        <Link href="/privacy" className="hover:text-gray-300">Privacy</Link>
-        <Link href="/disclaimer" className="hover:text-gray-300">Disclaimer</Link>
-        <span>Not investment or tax advice.</span>
-      </footer>
+      {!report && <DonatePanel />}
+      <SiteFooter />
     </div>
   );
 }

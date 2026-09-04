@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+
 // Site-wide constants. NEXT_PUBLIC_SITE_URL overrides the canonical origin
 // (no trailing slash) for preview deploys; production is optionbasis.com.
 export const SITE_NAME = "OptionBasis";
@@ -43,6 +45,30 @@ export const GUIDES: GuideMeta[] = [
     readMinutes: 6,
   },
 ];
+
+// Metadata for a /guides/<slug> page. Keeps canonical, Open Graph type and
+// the article timestamps in step across every guide — Google reads
+// article:published_time / article:modified_time from the OG tags as well as
+// from the JSON-LD, and a guide that disagrees with itself is worse than one
+// that says nothing.
+export function guideMetadata(slug: string): Metadata {
+  const g = GUIDES.find((x) => x.slug === slug);
+  if (!g) throw new Error(`Unknown guide slug: ${slug}`);
+  return {
+    title: g.title,
+    description: g.description,
+    alternates: { canonical: `/guides/${g.slug}` },
+    openGraph: {
+      title: g.title,
+      description: g.description,
+      type: "article",
+      url: `/guides/${g.slug}`,
+      publishedTime: g.published,
+      modifiedTime: g.updated,
+      authors: [SITE_NAME],
+    },
+  };
+}
 
 // Home-page FAQ. Rendered on the page AND emitted as FAQPage structured data,
 // which is what Google needs to consider it for a rich result. Keep the two in
