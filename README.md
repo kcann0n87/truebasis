@@ -1,4 +1,6 @@
-# TrueBasis
+# OptionBasis
+
+Live at https://optionbasis.com
 
 Upload a brokerage activity statement and see, per stock, how much option
 premium you've collected against it and what the shares really cost you after
@@ -13,10 +15,12 @@ user ticks "remember on this device" (localStorage only).
 
 - IBKR Activity Statement CSVs and Robinhood activity-report CSVs (detected
   from the header). Overlapping statements are de-duplicated, so monthlies
-  plus a YTD is fine. Robinhood trade rows are parsed per Robinhood's
-  documented Trans Codes (Buy/Sell, STO/BTO/BTC/STC, OEXP, OASGN, OEXCS) but
-  have not yet been verified against a real trade export — see
-  `src/lib/robinhood.ts`.
+  plus a YTD is fine. The Robinhood parser was written against a real
+  1,287-row export: multi-line quoted descriptions, "S"-suffixed quantities,
+  fractional shares, and expirations/exercises whose direction comes from the
+  running position (a long call expiring is not a short buyback). Assignment
+  (OASGN) is handled but was absent from that export, so it stays untested
+  against real data — see `src/lib/robinhood.ts`.
 - Average-cost share lots, put and call assignments as ordinary fills.
 - Per-contract option lines with outcome (open / expired / closed / assigned)
   and rolls (buyback on the old line, new credit on the new one).
@@ -52,6 +56,17 @@ Free tool; revenue is referrals and (later) ads.
 
 `/privacy` and `/disclaimer` are static pages; keep them current if either of
 the above changes.
+
+## SEO
+
+- Canonical URLs, the sitemap and Open Graph URLs default to
+  `https://optionbasis.com`. Set `NEXT_PUBLIC_SITE_URL` (no trailing slash)
+  only to override that, e.g. on a preview deploy.
+- `/robots.txt` and `/sitemap.xml` are generated (`src/app/robots.ts`,
+  `src/app/sitemap.ts`). Add new guides to `GUIDES` in `src/lib/site.ts` and
+  they join the sitemap and the guides index automatically.
+- Structured data: WebApplication on every page (layout), Article on each
+  guide (`GuideLayout`).
 
 ## Deploy
 

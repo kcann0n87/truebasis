@@ -4,7 +4,8 @@
 
 import type { CcStartingPosition } from "./covered-calls";
 
-const KEY = "truebasis.v1";
+const KEY = "optionbasis.v1";
+const LEGACY_KEY = "truebasis.v1"; // pre-rename; read once, then migrated on the next save
 
 export interface StoredState {
   statements: Array<{ id: string; fileName: string; text: string; uploadedAt: string }>;
@@ -14,7 +15,7 @@ export interface StoredState {
 
 export function loadStored(): StoredState | null {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(KEY) ?? localStorage.getItem(LEGACY_KEY);
     if (!raw) return null;
     const j = JSON.parse(raw);
     if (!j || typeof j !== "object" || !Array.isArray(j.statements)) return null;
@@ -32,6 +33,7 @@ export function loadStored(): StoredState | null {
 export function saveStored(state: StoredState): string | null {
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
+    localStorage.removeItem(LEGACY_KEY);
     return null;
   } catch (e) {
     return e instanceof Error ? e.message : String(e);
@@ -41,6 +43,7 @@ export function saveStored(state: StoredState): string | null {
 export function clearStored() {
   try {
     localStorage.removeItem(KEY);
+    localStorage.removeItem(LEGACY_KEY);
   } catch {
     /* ignore */
   }

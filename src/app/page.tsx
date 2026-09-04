@@ -18,7 +18,7 @@ import { Referrals } from "@/components/Referrals";
 import { ReferralBanner } from "@/components/ReferralBanner";
 import { AdSlot } from "@/components/AdSlot";
 
-// TrueBasis — upload a brokerage activity statement, see per stock how much
+// OptionBasis — upload a brokerage activity statement, see per stock how much
 // option premium you've collected and what the shares really cost you.
 // Everything runs in the browser: the statement is parsed here, the numbers
 // are computed here, and nothing is sent anywhere. Refresh and it's gone,
@@ -490,7 +490,7 @@ export default function Home() {
       <div className="bg-gray-900 border-b border-gray-800 px-3 sm:px-6 py-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-emerald-400">TrueBasis</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-emerald-400">OptionBasis</h1>
             <p className="text-sm text-gray-400 mt-1 max-w-3xl">
               Drop in a brokerage activity statement. For each stock you own, see how much option premium you&apos;ve
               collected against it and what the shares <span className="text-gray-200">really</span> cost you after that premium.
@@ -499,13 +499,18 @@ export default function Home() {
               Runs entirely in your browser — the statement is never uploaded anywhere. Refresh and it&apos;s gone.
             </p>
           </div>
-          <button
-            onClick={loadDemo}
-            className="shrink-0 text-xs px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold"
-            title="Load a set of made-up statements so you can see what the tool does"
-          >
-            Try the demo
-          </button>
+          <div className="shrink-0 flex items-center gap-2">
+            <Link href="/guides" className="text-xs px-3 py-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 font-semibold">
+              Guides
+            </Link>
+            <button
+              onClick={loadDemo}
+              className="text-xs px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold"
+              title="Load a set of made-up statements so you can see what the tool does"
+            >
+              Try the demo
+            </button>
+          </div>
         </div>
       </div>
 
@@ -775,7 +780,8 @@ export default function Home() {
       <Referrals />
 
       <footer className="px-3 sm:px-6 py-4 border-t border-gray-800 text-[11px] text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
-        <span>© {new Date().getFullYear()} TrueBasis</span>
+        <span>© {new Date().getFullYear()} OptionBasis</span>
+        <Link href="/guides" className="hover:text-gray-300">Guides</Link>
         <Link href="/privacy" className="hover:text-gray-300">Privacy</Link>
         <Link href="/disclaimer" className="hover:text-gray-300">Disclaimer</Link>
         <span>Not investment or tax advice.</span>
