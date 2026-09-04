@@ -163,7 +163,13 @@ function TickerDetail({
         <Stat
           label={`Adj. basis (${lotLabel})`}
           value={t.sharesHeld > 0 ? money(t.totalCost - prem) : "—"}
-          hint={t.sharesHeld > 0 ? `raw ${money(t.totalCost)} (${money(t.rawAvgCost, 4)}/sh) · adj. ${money(adj, 4)}/sh` : undefined}
+          hint={
+            t.sharesHeld > 0
+              ? `cost basis ${money(t.totalCost)} (${money(t.rawAvgCost, 4)}/sh${t.seedPutPremium ? `, incl. ${money(t.seedPutPremium)} put premium` : ""})` +
+                (t.ibkrOpenCostBasis && t.ibkrOpenQty ? ` · broker statement: ${money(t.ibkrOpenCostBasis)} (${money(t.ibkrOpenCostBasis / t.ibkrOpenQty, 2)}/sh)` : "") +
+                ` · adj. ${money(adj, 4)}/sh`
+              : undefined
+          }
         />
         <Stat label={`Net premium (${lotLabel})`} value={signed(w.netPremium)} cls={pnlClass(w.netPremium)} hint={`calls ${signed(w.callPremium)} · puts ${signed(w.putPremium)}`} />
         <Stat label={`Stock realized (${lotLabel})`} value={signed(w.stockRealizedPnl)} cls={pnlClass(w.stockRealizedPnl)} hint="sells + assignments, avg-cost method" />
@@ -198,7 +204,7 @@ function TickerDetail({
               <tbody className="divide-y divide-gray-800/60">
                 {t.legs.map((l) => {
                   const counted = lotActive ? l.inLot : true;
-                  const net = lotActive ? l.lotNetPremium : l.netPremium;
+                  const net = lotActive && !l.lotSeed ? l.lotNetPremium : l.netPremium;
                   return (
                     <tr key={l.key} className={`hover:bg-gray-900/40 ${counted ? "" : "opacity-40"}`}>
                       <Td cls="text-gray-100">
@@ -222,7 +228,10 @@ function TickerDetail({
                       <Td right cls="text-gray-300">{l.contracts}</Td>
                       <Td right cls="text-gray-300">{l.premiumSource === "ibkr-realized" ? "?" : money(l.openCredit)}</Td>
                       <Td right cls="text-gray-300">{l.closeDebit ? money(l.closeDebit) : "—"}</Td>
-                      <Td right cls={`font-bold ${pnlClass(net)}`}>{signed(net)}</Td>
+                      <Td right cls={`font-bold ${pnlClass(net)}`}>
+                        {signed(net)}
+                        {l.lotSeed && lotActive && <span className="text-gray-500 font-normal" title="Folded into the cost basis rather than the premium column"> → basis</span>}
+                      </Td>
                       <td className="px-2 py-1.5">
                         <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded font-semibold ${OUTCOME_STYLE[l.outcome]}`}>
                           {l.outcome}
@@ -644,11 +653,11 @@ export default function Home() {
                   <Th>Stock</Th>
                   <Th right>Shares</Th>
                   <Th title="When the current lot of shares started (the buy or assignment that took the position from 0). 'before history' = held since before the uploaded statements.">Since</Th>
-                  <Th right title="Average cost of shares held, from stock fills only">Raw avg</Th>
+                  <Th right title="Cost per share of the shares held: what you paid, net of the premium from the put that delivered them (if any)">Cost / sh</Th>
                   <Th right title="Net premium from calls (opens − buybacks − commissions)">Call prem</Th>
                   <Th right title="Net premium from puts">Put prem</Th>
                   <Th right title="Premium collected as a % of the current cost basis">Prem %</Th>
-                  <Th right title="Total cost of the shares held (average-cost method)">Cost basis</Th>
+                  <Th right title="Total cost of the shares held, net of the premium from the put that delivered them (average-cost method)">Cost basis</Th>
                   <Th right title="Cost basis − premium collected: what the shares have really cost you">Adj. basis</Th>
                   <Th right title="(cost basis − premium) ÷ shares held: your adjusted cost per share">Adj. cost / sh</Th>
                   <Th right title="(cost basis − premium − realized stock P&L) ÷ shares. Sell everything here and the whole campaign nets to zero.">Break-even</Th>
@@ -678,7 +687,13 @@ export default function Home() {
                         <Td right cls={pnlClass(w.callPremium)}>{signed(w.callPremium)}</Td>
                         <Td right cls={w.putPremium === 0 ? "text-gray-600" : pnlClass(w.putPremium)}>{signed(w.putPremium)}</Td>
                         <Td right cls="text-gray-300">{premPct == null ? "—" : `${premPct.toFixed(1)}%`}</Td>
-                        <Td right cls="text-gray-300">{t.sharesHeld > 0 ? money(t.totalCost) : "—"}</Td>
+                        <Td right cls="text-gray-300">
+                          {t.sharesHeld > 0 ? (
+                            <span title={t.seedPutPremium ? `strike cost ${money(t.totalCost + t.seedPutPremium)} − ${money(t.seedPutPremium)} put premium` : undefined}>
+                              {money(t.totalCost)}{t.seedPutPremium ? <span className="text-emerald-500">*</span> : null}
+                            </span>
+                          ) : "—"}
+                        </Td>
                         <Td right cls="text-gray-200">{t.sharesHeld > 0 ? money(t.totalCost - prem) : "—"}</Td>
                         <Td right cls="text-emerald-300 font-bold">
                           {t.sharesHeld > 0 ? money(adj) : <span className="text-gray-500" title="Position closed out">flat {signed(w.totalPnlIfFlat)}</span>}
@@ -713,8 +728,9 @@ export default function Home() {
           <div>
             <span className="text-gray-400">Only since current shares were acquired</span>{" "}starts the clock at the buy or
             assignment that took the position from zero. Contracts sold before that (e.g. calls written on shares you no
-            longer hold) belong to the previous campaign and are left out, buybacks included. The one exception is the put
-            whose assignment delivered the shares: its premium is part of what you paid, so it counts toward this lot.
+            longer hold) belong to the previous campaign and are left out, buybacks included. The put whose assignment
+            delivered the shares is different: its premium is netted straight into the cost basis (marked *), so the
+            basis is strike × shares − that credit, and the calls written since come off that.
           </div>
           <div>
             <span className="text-gray-400">Adj. basis</span> = cost basis of shares held − net option premium;{" "}

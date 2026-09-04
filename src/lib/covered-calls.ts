@@ -129,8 +129,12 @@ export interface CcStockFill {
 export interface CcTickerSummary {
   ticker: string;
   sharesHeld: number;
-  totalCost: number; // average-cost basis of shares currently held
-  rawAvgCost: number | null;
+  // Cost basis of the shares held (average-cost method) AFTER netting the
+  // premium of the put whose assignment delivered them (seedPutPremium) —
+  // i.e. strike × shares − put credit, the price actually paid (Kyle 9/3).
+  totalCost: number;
+  seedPutPremium: number; // premium already folded into totalCost (0 if the lot began with a plain buy)
+  rawAvgCost: number | null; // totalCost / shares
   // When the CURRENT lot of shares started — the fill that took the position
   // from 0 to >0 (a buy, or a put assignment). Undefined when the shares were
   // already held before the earliest uploaded statement (or via a starting-
@@ -631,6 +635,11 @@ export function buildReport(
       const soldAll = leg.fills.filter((f) => f.codes.includes("O") && f.quantity < 0);
       const sold = soldAll.reduce((s, f) => s + -f.quantity, 0);
       const soldLot = leg.inLot ? sold : 0;
+      // The put that delivered the lot goes into the cost basis, not the
+      // lot's premium column (it would be double counted otherwise). It still
+      // counts in the all-history window, which is computed against the
+      // pre-put basis.
+      if (leg.lotSeed) leg.lotNetPremium = 0;
       if (leg.right === "C") {
         life.callPremium += leg.netPremium;
         lot.callPremium += leg.lotNetPremium;
@@ -676,7 +685,11 @@ export function buildReport(
     }
 
     const has = shares > 0;
-    const window = (w: typeof life, realized: number): CcPremiumWindow => {
+    // Fold the delivering put's premium into the basis of the shares held.
+    const seedPutPremium = has ? round2(legs.filter((l) => l.lotSeed).reduce((sum, l) => sum + l.netPremium, 0)) : 0;
+    const grossCost = totalCost; // strike × shares (+ commissions) before the put credit
+    totalCost = round2(totalCost - seedPutPremium);
+    const window = (w: typeof life, realized: number, basis: number): CcPremiumWindow => {
       const callPremium = round2(w.callPremium);
       const putPremium = round2(w.putPremium);
       const netPremium = round2(callPremium + putPremium);
@@ -688,20 +701,23 @@ export function buildReport(
         stockRealizedPnl,
         callsWritten: w.callsWritten,
         putsWritten: w.putsWritten,
-        adjustedAvgCost: has ? round4((totalCost - netPremium) / shares) : null,
-        adjustedAvgCostCallsOnly: has ? round4((totalCost - callPremium) / shares) : null,
-        breakEven: has ? round4((totalCost - netPremium - stockRealizedPnl) / shares) : null,
-        breakEvenCallsOnly: has ? round4((totalCost - callPremium - stockRealizedPnl) / shares) : null,
+        adjustedAvgCost: has ? round4((basis - netPremium) / shares) : null,
+        adjustedAvgCostCallsOnly: has ? round4((basis - callPremium) / shares) : null,
+        breakEven: has ? round4((basis - netPremium - stockRealizedPnl) / shares) : null,
+        breakEvenCallsOnly: has ? round4((basis - callPremium - stockRealizedPnl) / shares) : null,
         totalPnlIfFlat: has ? null : round2(netPremium + stockRealizedPnl),
       };
     };
-    const lifetime = window(life, stockRealized);
+    // All-history premium still includes the delivering put, so measure it
+    // against the gross cost; the lot window measures against the net basis.
+    const lifetime = window(life, stockRealized, grossCost);
     // A flat position has no "current lot": show the whole campaign.
-    const lotWindow = has && lotStart !== undefined ? window(lot, lotStockRealized) : lifetime;
+    const lotWindow = has && lotStart !== undefined ? window(lot, lotStockRealized, totalCost) : lifetime;
     tickers.push({
       ticker,
       sharesHeld: shares,
-      totalCost: round2(totalCost),
+      totalCost,
+      seedPutPremium,
       rawAvgCost: has ? round4(totalCost / shares) : null,
       lotStart: has ? lotStart : undefined,
       lifetime,

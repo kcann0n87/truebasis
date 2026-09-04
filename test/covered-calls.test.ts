@@ -90,15 +90,21 @@ assert.equal(sndk.lifetime.callPremium, 4999 + 3999 - 6001 + 8999);
 assert.equal(sndk.lifetime.putPremium, 2999);
 // Lot: only the 7/9 call, its 7/22 buyback (the roll), and the new 8/21 call
 assert.equal(sndk.lot.callPremium, 3999 - 6001 + 8999);
-// The 1490 put delivered the shares, so its 2999 counts toward this lot (Kyle 9/3).
-assert.equal(sndk.lot.putPremium, 2999);
+// The 1490 put delivered the shares: its 2999 is folded into the cost basis (Kyle 9/3),
+// so basis = 149000 − 2999 and the lot's put column stays 0 (no double count).
+assert.equal(sndk.seedPutPremium, 2999);
+assert.equal(sndk.totalCost, 146001);
+assert.equal(sndk.rawAvgCost, 1460.01);
+assert.equal(sndk.lot.putPremium, 0);
 assert.equal(sndk.lot.callsWritten, 2);
-assert.equal(sndk.lot.adjustedAvgCost, (149000 - 6997 - 2999) / 100);
-assert.equal(sndk.lot.adjustedAvgCostCallsOnly, (149000 - 6997) / 100);
+assert.equal(sndk.lot.adjustedAvgCost, (146001 - 6997) / 100);
+assert.equal(sndk.lot.adjustedAvgCostCallsOnly, (146001 - 6997) / 100);
+// All-history still nets everything once: (gross 149000 − all premium incl. the put) / 100
+assert.equal(sndk.lifetime.adjustedAvgCost, (149000 - (4999 + 3999 - 6001 + 8999) - 2999) / 100);
 const seedPut = sndk.legs.find((l) => l.right === "P")!;
 assert.equal(seedPut.lotSeed, true);
 assert.equal(seedPut.inLot, true);
-assert.equal(seedPut.lotNetPremium, 2999);
+assert.equal(seedPut.lotNetPremium, 0);
 const juneCall = sndk.legs.find((l) => l.strike === 1400)!;
 assert.equal(juneCall.inLot, false);
 assert.equal(juneCall.lotNetPremium, 0);
@@ -118,15 +124,18 @@ assert.equal(crclAll.warnings.length, 0, crclAll.warnings.join("\n"));
 const buyKey = crclAll.stockFills.find((f) => f.quantity === 100)!.fillKey;
 const crclEx = buildReport([crclStmt], {}, new Set([buyKey])).tickers[0];
 assert.equal(crclEx.sharesHeld, 1000);
-assert.equal(crclEx.totalCost, 90000);
-assert.equal(crclEx.rawAvgCost, 90);
+assert.equal(crclEx.seedPutPremium, 1993.5);
+assert.equal(crclEx.totalCost, 90000 - 1993.5);
+assert.equal(crclEx.rawAvgCost, 88.0065);
 assert.equal(crclEx.lotStart, "2026-07-08 16:20:00"); // now the assignment starts the lot
 assert.equal(crclEx.lot.callPremium, 2993.5);
-assert.equal(crclEx.lot.putPremium, 1993.5); // the put that delivered the 1000 shares
-assert.equal(crclEx.lot.adjustedAvgCost, (90000 - 2993.5 - 1993.5) / 1000);
+assert.equal(crclEx.lot.putPremium, 0); // the delivering put lives in the cost basis instead
+assert.equal(crclEx.lot.adjustedAvgCost, (90000 - 1993.5 - 2993.5) / 1000);
 // With the 100-share buy counted, the lot started at that BUY, so the later put assignment is just an add: not a seed.
 assert.equal(crclAll.legs.find((l) => l.right === "P")!.lotSeed, false);
 assert.equal(crclAll.lot.putPremium, 1993.5); // ...but it was sold inside the lot anyway
+assert.equal(crclAll.seedPutPremium, 0);
+assert.equal(crclAll.totalCost, 98001);
 assert.equal(crclEx.stockFills.find((f) => f.quantity === 100)!.excluded, true);
 assert.equal(crclEx.warnings.length, 0, crclEx.warnings.join("\n")); // IBKR's 1100 still reconciles (1000 + 100 excluded)
 console.log("EXCLUDE FILL PASS");
@@ -158,6 +167,9 @@ console.log("STRADDLE PASS");
 const abc = buildReport([parseStatementCsv(fx("seed-nextday.csv"), "seed-nextday.csv")]).tickers[0];
 assert.equal(abc.lotStart, "2026-07-09 09:30:00");
 assert.equal(abc.legs.find((l) => l.right === "P")!.lotSeed, true);
-assert.equal(abc.lot.putPremium, 299);
+assert.equal(abc.seedPutPremium, 299);
+assert.equal(abc.totalCost, 5000 - 299);
+assert.equal(abc.lot.putPremium, 0);
 assert.equal(abc.lot.callPremium, 199);
+assert.equal(abc.lot.adjustedAvgCost, (5000 - 299 - 199) / 100);
 console.log("SEED NEXT-DAY PASS");
