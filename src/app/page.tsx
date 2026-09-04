@@ -126,12 +126,16 @@ function StartingPositionForm({
 function TickerDetail({
   t,
   w,
+  prem,
+  adj,
   sinceLot,
   onSaveStart,
   onToggleFill,
 }: {
   t: CcTickerSummary;
   w: CcPremiumWindow;
+  prem: number; // premium counted toward basis in the selected window (calls, or calls + puts)
+  adj: number | null; // adjusted cost per share for the same selection
   sinceLot: boolean;
   onSaveStart: (ticker: string, pos: CcStartingPosition | null) => void;
   onToggleFill: (fillKey: string, excluded: boolean) => void;
@@ -156,7 +160,11 @@ function TickerDetail({
           value={t.sharesHeld.toLocaleString()}
           hint={t.lotStart ? `this lot since ${t.lotStart.slice(0, 10)}` : t.ibkrOpenQty != null ? `broker shows ${t.ibkrOpenQty}` : undefined}
         />
-        <Stat label="Cost basis" value={money(t.totalCost)} hint={t.rawAvgCost != null ? `${money(t.rawAvgCost, 4)}/sh raw` : undefined} />
+        <Stat
+          label={`Adj. basis (${lotLabel})`}
+          value={t.sharesHeld > 0 ? money(t.totalCost - prem) : "—"}
+          hint={t.sharesHeld > 0 ? `raw ${money(t.totalCost)} (${money(t.rawAvgCost, 4)}/sh) · adj. ${money(adj, 4)}/sh` : undefined}
+        />
         <Stat label={`Net premium (${lotLabel})`} value={signed(w.netPremium)} cls={pnlClass(w.netPremium)} hint={`calls ${signed(w.callPremium)} · puts ${signed(w.putPremium)}`} />
         <Stat label={`Stock realized (${lotLabel})`} value={signed(w.stockRealizedPnl)} cls={pnlClass(w.stockRealizedPnl)} hint="sells + assignments, avg-cost method" />
       </div>
@@ -689,7 +697,7 @@ export default function Home() {
                       {isOpen && (
                         <tr>
                           <td colSpan={13} className="p-0">
-                            <TickerDetail t={t} w={w} sinceLot={sinceLot} onSaveStart={saveStart} onToggleFill={toggleFill} />
+                            <TickerDetail t={t} w={w} prem={prem} adj={adj} sinceLot={sinceLot} onSaveStart={saveStart} onToggleFill={toggleFill} />
                           </td>
                         </tr>
                       )}

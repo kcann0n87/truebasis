@@ -152,3 +152,12 @@ assert.equal(xyz.lifetime.callPremium, 249 - 102);
 // SNDK roll from the earlier fixture still fully inside its lot
 assert.equal(sndk.lot.callPremium, 3999 - 6001 + 8999);
 console.log("STRADDLE PASS");
+
+
+// ── Put assigned 7/8 16:20, stock booked 7/9 09:30: still the lot's seed ──
+const abc = buildReport([parseStatementCsv(fx("seed-nextday.csv"), "seed-nextday.csv")]).tickers[0];
+assert.equal(abc.lotStart, "2026-07-09 09:30:00");
+assert.equal(abc.legs.find((l) => l.right === "P")!.lotSeed, true);
+assert.equal(abc.lot.putPremium, 299);
+assert.equal(abc.lot.callPremium, 199);
+console.log("SEED NEXT-DAY PASS");

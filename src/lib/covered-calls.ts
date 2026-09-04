@@ -542,12 +542,19 @@ export function buildReport(
       });
     }
     const inLot = (dt: string) => lotStart === undefined || dt >= lotStart;
-    // A short put whose assignment fill is the one that started the lot.
+    // A short put whose assignment is what started the lot. IBKR doesn't
+    // always stamp the option's assignment row and the resulting stock row
+    // with the same time (the stock leg can even land on the next session),
+    // so match on the calendar day: same day, or the put the day before.
+    const dayOf = (dt: string) => dt.slice(0, 10);
+    const prevDay = (d: string) => new Date(Date.parse(d + "T12:00:00Z") - 86_400_000).toISOString().slice(0, 10);
     const seededLot = (leg: CcOptionLeg) =>
       lotStartedByAssignment &&
       lotStart !== undefined &&
       leg.right === "P" &&
-      leg.fills.some((f) => f.codes.includes("A") && f.dateTime === lotStart);
+      leg.fills.some(
+        (f) => f.codes.includes("A") && (dayOf(f.dateTime) === dayOf(lotStart!) || dayOf(f.dateTime) === prevDay(dayOf(lotStart!))),
+      );
 
     // ── Options: group by contract line ──
     const legMap = new Map<string, CcOptionLeg>();
