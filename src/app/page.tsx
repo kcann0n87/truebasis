@@ -499,13 +499,18 @@ export default function Home() {
               Runs entirely in your browser — the statement is never uploaded anywhere. Refresh and it&apos;s gone.
             </p>
           </div>
-          <button
-            onClick={loadDemo}
-            className="shrink-0 text-xs px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold"
-            title="Load a set of made-up statements so you can see what the tool does"
-          >
-            Try the demo
-          </button>
+          <div className="shrink-0 flex items-center gap-2">
+            <Link href="/guides" className="text-xs px-3 py-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 font-semibold">
+              Guides
+            </Link>
+            <button
+              onClick={loadDemo}
+              className="text-xs px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold"
+              title="Load a set of made-up statements so you can see what the tool does"
+            >
+              Try the demo
+            </button>
+          </div>
         </div>
       </div>
 
@@ -776,6 +781,7 @@ export default function Home() {
 
       <footer className="px-3 sm:px-6 py-4 border-t border-gray-800 text-[11px] text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
         <span>© {new Date().getFullYear()} TrueBasis</span>
+        <Link href="/guides" className="hover:text-gray-300">Guides</Link>
         <Link href="/privacy" className="hover:text-gray-300">Privacy</Link>
         <Link href="/disclaimer" className="hover:text-gray-300">Disclaimer</Link>
         <span>Not investment or tax advice.</span>

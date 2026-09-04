@@ -53,6 +53,16 @@ Free tool; revenue is referrals and (later) ads.
 `/privacy` and `/disclaimer` are static pages; keep them current if either of
 the above changes.
 
+## SEO
+
+- `NEXT_PUBLIC_SITE_URL` (Vercel env) sets canonical URLs, the sitemap and
+  Open Graph URLs — set it to the real domain, no trailing slash.
+- `/robots.txt` and `/sitemap.xml` are generated (`src/app/robots.ts`,
+  `src/app/sitemap.ts`). Add new guides to `GUIDES` in `src/lib/site.ts` and
+  they join the sitemap and the guides index automatically.
+- Structured data: WebApplication on every page (layout), Article on each
+  guide (`GuideLayout`).
+
 ## Deploy
 
 Static-friendly Next.js app; deploys to Vercel or Cloudflare Pages with no
