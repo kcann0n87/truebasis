@@ -513,7 +513,9 @@ export function buildReport(
       // Shares the broker says are held now that the uploaded fills don't
       // account for: held before the earliest statement, or transferred in
       // (transfers aren't in the Trades section — CAVA on Kyle's statement).
-      const netTraded = tt.filter((t) => t.asset === "stock" && !excludedFills.has(tradeKey(t))).reduce((sum, t) => sum + t.quantity, 0);
+      // All stock fills, excluded ones included: the broker's quantity counts
+      // them, so leaving them out here would just seed them straight back in.
+      const netTraded = tt.filter((t) => t.asset === "stock").reduce((sum, t) => sum + t.quantity, 0);
       const missing = Math.round((ibkrPos.quantity - netTraded) * 10000) / 10000;
       if (missing > 0) {
         startPos = { shares: missing, avgCost: round4(ibkrPos.costBasis / ibkrPos.quantity) };
