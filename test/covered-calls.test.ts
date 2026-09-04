@@ -90,9 +90,15 @@ assert.equal(sndk.lifetime.callPremium, 4999 + 3999 - 6001 + 8999);
 assert.equal(sndk.lifetime.putPremium, 2999);
 // Lot: only the 7/9 call, its 7/22 buyback (the roll), and the new 8/21 call
 assert.equal(sndk.lot.callPremium, 3999 - 6001 + 8999);
-assert.equal(sndk.lot.putPremium, 0);
+// The 1490 put delivered the shares, so its 2999 counts toward this lot (Kyle 9/3).
+assert.equal(sndk.lot.putPremium, 2999);
 assert.equal(sndk.lot.callsWritten, 2);
-assert.equal(sndk.lot.adjustedAvgCost, (149000 - 6997) / 100);
+assert.equal(sndk.lot.adjustedAvgCost, (149000 - 6997 - 2999) / 100);
+assert.equal(sndk.lot.adjustedAvgCostCallsOnly, (149000 - 6997) / 100);
+const seedPut = sndk.legs.find((l) => l.right === "P")!;
+assert.equal(seedPut.lotSeed, true);
+assert.equal(seedPut.inLot, true);
+assert.equal(seedPut.lotNetPremium, 2999);
 const juneCall = sndk.legs.find((l) => l.strike === 1400)!;
 assert.equal(juneCall.inLot, false);
 assert.equal(juneCall.lotNetPremium, 0);
@@ -116,8 +122,11 @@ assert.equal(crclEx.totalCost, 90000);
 assert.equal(crclEx.rawAvgCost, 90);
 assert.equal(crclEx.lotStart, "2026-07-08 16:20:00"); // now the assignment starts the lot
 assert.equal(crclEx.lot.callPremium, 2993.5);
-assert.equal(crclEx.lot.putPremium, 0); // put sold before the lot
-assert.equal(crclEx.lot.adjustedAvgCost, (90000 - 2993.5) / 1000);
+assert.equal(crclEx.lot.putPremium, 1993.5); // the put that delivered the 1000 shares
+assert.equal(crclEx.lot.adjustedAvgCost, (90000 - 2993.5 - 1993.5) / 1000);
+// With the 100-share buy counted, the lot started at that BUY, so the later put assignment is just an add: not a seed.
+assert.equal(crclAll.legs.find((l) => l.right === "P")!.lotSeed, false);
+assert.equal(crclAll.lot.putPremium, 1993.5); // ...but it was sold inside the lot anyway
 assert.equal(crclEx.stockFills.find((f) => f.quantity === 100)!.excluded, true);
 assert.equal(crclEx.warnings.length, 0, crclEx.warnings.join("\n")); // IBKR's 1100 still reconciles (1000 + 100 excluded)
 console.log("EXCLUDE FILL PASS");

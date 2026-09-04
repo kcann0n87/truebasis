@@ -87,7 +87,12 @@ export interface CcOptionLeg {
   // (it belongs to the current lot), else 0. Always netPremium when the lot
   // started before the uploaded history.
   lotNetPremium: number;
-  inLot: boolean; // contract was sold inside the current lot window
+  inLot: boolean; // contract was sold inside the current lot window (or delivered the lot — see lotSeed)
+  // This put's assignment is the fill that started the current lot. It was
+  // sold before the lot, but its premium is part of what the shares cost, so
+  // it counts toward the lot (Kyle 9/3: "include the premium from the
+  // original put in the cost basis").
+  lotSeed: boolean;
   fills: CcTrade[];
 }
 
@@ -452,6 +457,7 @@ export function buildReport(
     // the history and its window is the whole history.
     let knownFlat = !(override && override.shares > 0) && !(priorQty > 0);
     let lotStart: string | undefined;
+    let lotStartedByAssignment = false;
     let lotStockRealized = 0;
     if (override && override.shares > 0) {
       shares = override.shares;
@@ -486,6 +492,7 @@ export function buildReport(
           // A fresh lot begins here — premium before this point belongs to an
           // earlier campaign, not to these shares.
           lotStart = t.dateTime;
+          lotStartedByAssignment = t.codes.includes("A");
           lotStockRealized = 0;
         }
         shares += t.quantity;
@@ -535,6 +542,12 @@ export function buildReport(
       });
     }
     const inLot = (dt: string) => lotStart === undefined || dt >= lotStart;
+    // A short put whose assignment fill is the one that started the lot.
+    const seededLot = (leg: CcOptionLeg) =>
+      lotStartedByAssignment &&
+      lotStart !== undefined &&
+      leg.right === "P" &&
+      leg.fills.some((f) => f.codes.includes("A") && f.dateTime === lotStart);
 
     // ── Options: group by contract line ──
     const legMap = new Map<string, CcOptionLeg>();
@@ -558,6 +571,7 @@ export function buildReport(
           premiumSource: "fills",
           lotNetPremium: 0,
           inLot: false,
+          lotSeed: false,
           fills: [],
         };
         legMap.set(key, leg);
@@ -589,7 +603,8 @@ export function buildReport(
         // premium total on Kyle's real statements, 9/3.) A roll's buyback and
         // the new credit still both land inside the lot when both contracts
         // were sold after the lot started.
-        leg.inLot = inLot(leg.openedAt);
+        leg.lotSeed = seededLot(leg);
+        leg.inLot = leg.lotSeed || inLot(leg.openedAt);
         leg.lotNetPremium = leg.inLot ? leg.netPremium : 0;
       } else {
         // Sold before the earliest uploaded statement; only the close is here.
@@ -598,8 +613,10 @@ export function buildReport(
         leg.netPremium = round2(leg.fills.reduce((sum, f) => sum + f.realizedPL, 0));
         leg.openedAt = ""; // unknown — before uploaded history
         leg.netQty = 0;
-        // Opened before history ⇒ before any lot that started inside history.
-        leg.inLot = lotStart === undefined;
+        // Opened before history ⇒ before any lot that started inside history,
+        // unless its assignment is what delivered the lot.
+        leg.lotSeed = seededLot(leg);
+        leg.inLot = leg.lotSeed || lotStart === undefined;
         leg.lotNetPremium = leg.inLot ? leg.netPremium : 0;
       }
       leg.outcome = legOutcome(leg);

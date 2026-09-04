@@ -167,7 +167,7 @@ function TickerDetail({
         <div className="text-xs font-semibold text-gray-300 mb-1">
           Options written ({t.legs.length} contract line{t.legs.length === 1 ? "" : "s"})
           {lotActive && (
-            <span className="font-normal text-gray-500"> · contracts sold before {t.lotStart!.slice(0, 10)} are dimmed and not counted, buybacks included</span>
+            <span className="font-normal text-gray-500"> · contracts sold before {t.lotStart!.slice(0, 10)} are dimmed and not counted (buybacks included), except the put that delivered the shares</span>
           )}
         </div>
         {t.legs.length === 0 ? (
@@ -195,6 +195,11 @@ function TickerDetail({
                     <tr key={l.key} className={`hover:bg-gray-900/40 ${counted ? "" : "opacity-40"}`}>
                       <Td cls="text-gray-100">
                         {t.ticker} {l.expiration} ${l.strike} {l.right === "C" ? "Call" : "Put"}
+                        {l.lotSeed && (
+                          <span className="ml-1 text-[10px] uppercase text-emerald-400" title="This put's assignment delivered the current shares, so its premium counts toward their basis">
+                            delivered lot
+                          </span>
+                        )}
                       </Td>
                       <Td cls="text-gray-400">
                         {l.premiumSource === "ibkr-realized" ? (
@@ -699,8 +704,9 @@ export default function Home() {
         <div className="text-[11px] text-gray-500 mt-3 space-y-1">
           <div>
             <span className="text-gray-400">Only since current shares were acquired</span>{" "}starts the clock at the buy or
-            assignment that took the position from zero. Contracts sold before that (e.g. the put that got you assigned,
-            or calls written on shares you no longer hold) belong to the previous campaign and are left out, buybacks included.
+            assignment that took the position from zero. Contracts sold before that (e.g. calls written on shares you no
+            longer hold) belong to the previous campaign and are left out, buybacks included. The one exception is the put
+            whose assignment delivered the shares: its premium is part of what you paid, so it counts toward this lot.
           </div>
           <div>
             <span className="text-gray-400">Adj. basis</span> = cost basis of shares held − net option premium;{" "}
