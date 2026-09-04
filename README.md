@@ -65,8 +65,14 @@ the above changes.
 - `/robots.txt` and `/sitemap.xml` are generated (`src/app/robots.ts`,
   `src/app/sitemap.ts`). Add new guides to `GUIDES` in `src/lib/site.ts` and
   they join the sitemap and the guides index automatically.
-- Structured data: WebApplication on every page (layout), Article on each
-  guide (`GuideLayout`).
+- Structured data: WebApplication on every page (layout), FAQPage on the home
+  page only (`FaqSchema`, matching the visible FAQ — Google penalises schema
+  that isn't on the page), Article + BreadcrumbList on each guide.
+- Social/preview image and favicon are generated at build time
+  (`src/app/opengraph-image.tsx`, `src/app/icon.tsx`); `manifest.ts` covers
+  mobile install metadata.
+- Search Console: verify by DNS (nothing needed here), or set
+  `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION` to the HTML-tag token.
 
 ## Deploy
 

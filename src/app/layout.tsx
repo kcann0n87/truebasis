@@ -15,7 +15,16 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
   openGraph: { title, description: SITE_DESCRIPTION, type: "website", siteName: SITE_NAME, url: "/" },
   twitter: { card: "summary", title: SITE_NAME, description: SITE_DESCRIPTION },
-  robots: { index: true, follow: true },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 },
+  },
+  // Set NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION to the token Search Console gives
+  // you if you verify by HTML tag (DNS verification needs nothing here).
+  verification: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
+    ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
+    : undefined,
 };
 
 export const viewport: Viewport = {
