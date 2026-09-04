@@ -388,7 +388,7 @@ export default function Home() {
     async (files: FileList | File[]) => {
       const list = Array.from(files).filter((f) => f.name.toLowerCase().endsWith(".csv") || f.type === "text/csv");
       if (list.length === 0) {
-        setError("Only .csv files are accepted. In IBKR: Performance & Reports → Statements → Activity → CSV.");
+        setError("Only .csv files are accepted: an IBKR Activity Statement or a Robinhood activity report.");
         return;
       }
       setError(null);
@@ -400,7 +400,7 @@ export default function Home() {
           if (!text.trim()) throw new Error("Empty file");
           const statement = parseStatementCsv(text, f.name);
           if (statement.trades.length === 0 && !statement.period) {
-            throw new Error("Doesn't look like an IBKR Activity Statement CSV (no Trades / Statement sections)");
+            throw new Error("Doesn't look like an IBKR Activity Statement or a Robinhood activity report");
           }
           if (next.some((l) => l.statement.id === statement.id)) {
             out.push({ fileName: f.name, ok: true, message: `already loaded (${statement.period ?? "unknown period"})` });
@@ -517,8 +517,8 @@ export default function Home() {
             <div className="text-xs text-emerald-300 mt-1">Showing demo data — drop your own statement to replace it.</div>
           )}
           <div className="text-xs text-gray-500 mt-1">
-            Interactive Brokers for now: Client Portal → Performance &amp; Reports → Statements → Activity → CSV.
-            Overlapping statements are de-duplicated. More brokers coming.
+            Interactive Brokers: Client Portal → Performance &amp; Reports → Statements → Activity → CSV.
+            Robinhood: Account → Reports and statements → Activity reports → CSV. Overlapping statements are de-duplicated.
           </div>
         </div>
 
@@ -561,6 +561,7 @@ export default function Home() {
                   className="inline-flex items-center gap-1.5 bg-gray-900 border border-gray-800 rounded px-2 py-1 text-gray-300"
                   title={s.fileName}
                 >
+                  <span className="text-gray-500 uppercase text-[10px]">{s.broker === "robinhood" ? "RH" : "IBKR"}</span>
                   <span className="font-mono">{s.periodStart && s.periodEnd ? `${s.periodStart} → ${s.periodEnd}` : s.period ?? s.fileName}</span>
                   {s.accountId && <span className="text-gray-500">{s.accountId}</span>}
                   <span className="text-gray-500">{s.tradeCount} fills</span>
@@ -733,8 +734,8 @@ export default function Home() {
           <ol className="grid gap-2 sm:grid-cols-3 text-xs text-gray-400">
             <li className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3">
               <div className="text-emerald-400 font-bold mb-1">1 · Export</div>
-              In IBKR: Performance &amp; Reports → Statements → Activity → CSV. One month or a whole year; overlapping
-              periods are de-duplicated.
+              IBKR: Performance &amp; Reports → Statements → Activity → CSV. Robinhood: Reports and statements → Activity
+              reports → CSV. One month or a whole year; overlapping periods are de-duplicated.
             </li>
             <li className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3">
               <div className="text-emerald-400 font-bold mb-1">2 · Drop it here</div>

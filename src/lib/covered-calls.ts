@@ -35,14 +35,18 @@ export interface CcTrade {
   price: number; // T. Price
   proceeds: number; // signed cash: + received, − paid
   commission: number; // negative
-  realizedPL: number; // IBKR's own (FIFO lot) realized P/L for the fill
+  realizedPL: number; // broker's own (lot-based) realized P/L for the fill; 0 when unknown
+  realizedKnown?: boolean; // false for brokers that don't report per-fill realized P/L (Robinhood)
   codes: string[];
   netCash: number; // proceeds + commission
 }
 
+export type CcBroker = "ibkr" | "robinhood";
+
 export interface CcStatement {
-  id: string; // sha1 of the CSV text — dedupes re-uploads of the same file
+  id: string; // content hash of the CSV text — dedupes re-uploads of the same file
   fileName: string;
+  broker: CcBroker;
   accountId?: string;
   period?: string; // e.g. "June 1, 2026 - June 30, 2026"
   periodStart?: string; // YYYY-MM-DD (parsed from period; undefined if unparseable)
@@ -172,6 +176,8 @@ export interface CcReport {
   lotTotals: CcTotals; // current-lot windows summed
 }
 
+import { isRobinhoodCsv, parseRobinhoodTrades } from "./robinhood.ts";
+
 // ── CSV parsing ───────────────────────────────────────────────────────────
 
 const MONTHS: Record<string, string> = {
@@ -269,7 +275,31 @@ function num(s: string | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+// Detects the broker from the header and hands off to the right parser.
 export function parseStatementCsv(text: string, fileName = "statement.csv"): CcStatement {
+  if (isRobinhoodCsv(text)) return parseRobinhoodCsv(text, fileName);
+  return parseIbkrCsv(text, fileName);
+}
+
+export function parseRobinhoodCsv(text: string, fileName = "statement.csv"): CcStatement {
+  const { trades, minDate, maxDate } = parseRobinhoodTrades(text);
+  trades.sort((a, b) => a.dateTime.localeCompare(b.dateTime));
+  return {
+    id: contentId(text),
+    fileName,
+    broker: "robinhood",
+    accountId: undefined,
+    period: minDate && maxDate ? `${minDate} - ${maxDate}` : undefined,
+    periodStart: minDate,
+    periodEnd: maxDate,
+    uploadedAt: new Date().toISOString(),
+    trades,
+    priorStockQty: {},
+    openStock: {},
+  };
+}
+
+export function parseIbkrCsv(text: string, fileName = "statement.csv"): CcStatement {
   const lines = text.split(/\r?\n/);
   const headers: Record<string, string[]> = {};
   const meta: Record<string, string> = {};
@@ -364,6 +394,7 @@ export function parseStatementCsv(text: string, fileName = "statement.csv"): CcS
   return {
     id: contentId(text),
     fileName,
+    broker: "ibkr",
     accountId: meta["Account"],
     period,
     periodStart: start,
@@ -511,10 +542,12 @@ export function buildReport(
           // fill uses the real lot cost — so take that for the whole fill
           // rather than booking the proceeds as pure profit (which sent
           // break-even negative on GOOG/QCOM, Kyle 9/3).
-          realized = t.realizedPL;
+          realized = t.realizedKnown === false ? 0 : t.realizedPL;
           warnings.push(
             `Sold ${q} shares on ${t.dateTime.slice(0, 10)} but only ${shares} were on the books, ` +
-              `so IBKR's own realized P&L (${t.realizedPL >= 0 ? "+" : "-"}$${Math.abs(t.realizedPL).toFixed(2)}) was used for that fill. ` +
+              (t.realizedKnown === false
+                ? `and this broker's export doesn't say what they cost, so that fill's P&L was left out. `
+                : `so the broker's own realized P&L (${t.realizedPL >= 0 ? "+" : "-"}$${Math.abs(t.realizedPL).toFixed(2)}) was used for that fill. `) +
               `Upload earlier statements or set a starting position for an exact basis.`,
           );
         } else {
@@ -621,7 +654,9 @@ export function buildReport(
         // Sold before the earliest uploaded statement; only the close is here.
         // Its opening quantity is unknown, so assume the closes flattened it.
         leg.premiumSource = "ibkr-realized";
-        leg.netPremium = round2(leg.fills.reduce((sum, f) => sum + f.realizedPL, 0));
+        leg.netPremium = leg.fills.some((f) => f.realizedKnown !== false)
+          ? round2(leg.fills.reduce((sum, f) => sum + f.realizedPL, 0))
+          : round2(leg.openCredit - leg.closeDebit); // no realized figure from this broker: cash flow (a pure buyback shows as a debit)
         leg.openedAt = ""; // unknown — before uploaded history
         leg.netQty = 0;
         // Opened before history ⇒ before any lot that started inside history,
@@ -762,6 +797,7 @@ export function buildReport(
     statements: sorted.map((s) => ({
       id: s.id,
       fileName: s.fileName,
+      broker: s.broker,
       accountId: s.accountId,
       period: s.period,
       periodStart: s.periodStart,

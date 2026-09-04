@@ -11,8 +11,12 @@ user ticks "remember on this device" (localStorage only).
 
 ## What it handles
 
-- IBKR Activity Statement CSVs (more brokers to come). Overlapping statements
-  are de-duplicated, so monthlies plus a YTD is fine.
+- IBKR Activity Statement CSVs and Robinhood activity-report CSVs (detected
+  from the header). Overlapping statements are de-duplicated, so monthlies
+  plus a YTD is fine. Robinhood trade rows are parsed per Robinhood's
+  documented Trans Codes (Buy/Sell, STO/BTO/BTC/STC, OEXP, OASGN, OEXCS) but
+  have not yet been verified against a real trade export — see
+  `src/lib/robinhood.ts`.
 - Average-cost share lots, put and call assignments as ordinary fills.
 - Per-contract option lines with outcome (open / expired / closed / assigned)
   and rolls (buyback on the old line, new credit on the new one).
