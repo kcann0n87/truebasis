@@ -1,0 +1,18 @@
+Statement,Header,Field Name,Field Value
+Statement,Data,Period,"June 1, 2026 - August 31, 2026"
+Account Information,Header,Field Name,Field Value
+Account Information,Data,Account,U1234567
+Mark-to-Market Performance Summary,Header,Asset Category,Symbol,Prior Quantity,Current Quantity,Prior Price,Current Price,Mark-to-Market P/L Position,Mark-to-Market P/L Transaction,Mark-to-Market P/L Commissions,Mark-to-Market P/L Other,Mark-to-Market P/L Total,Code
+Mark-to-Market Performance Summary,Data,Stocks,SNDK,0,100,0,1600,0,0,0,0,0,
+Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code
+Trades,Data,Order,Stocks,USD,SNDK,"2026-07-08, 16:20:00",100,1490,1500,-149000,0,149000,0,1000,A
+Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code
+Trades,Data,Order,Equity and Index Options,USD,SNDK 12JUN26 1400 C,"2026-06-01, 10:00:00",-1,50,49,5000,-1,-4999,0,100,O
+Trades,Data,Order,Equity and Index Options,USD,SNDK 12JUN26 1400 C,"2026-06-12, 16:20:00",1,0,0,0,0,4999,4999,0,C;Ep
+Trades,Data,Order,Equity and Index Options,USD,SNDK 08JUL26 1490 P,"2026-06-20, 10:00:00",-1,30,31,3000,-1,-2999,0,-100,O
+Trades,Data,Order,Equity and Index Options,USD,SNDK 08JUL26 1490 P,"2026-07-08, 16:20:00",1,0,0,0,0,2999,2999,0,A
+Trades,Data,Order,Equity and Index Options,USD,SNDK 24JUL26 1550 C,"2026-07-09, 10:00:00",-1,40,41,4000,-1,-3999,0,-100,O
+Trades,Data,Order,Equity and Index Options,USD,SNDK 24JUL26 1550 C,"2026-07-22, 10:00:00",1,60,59,-6000,-1,3999,-2002,100,C
+Trades,Data,Order,Equity and Index Options,USD,SNDK 21AUG26 1650 C,"2026-07-22, 10:00:01",-1,90,89,9000,-1,-8999,0,100,O
+Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Quantity,Mult,Cost Price,Cost Basis,Close Price,Value,Unrealized P/L,Code
+Open Positions,Data,Summary,Stocks,USD,SNDK,100,1,1490,149000,1600,160000,11000,

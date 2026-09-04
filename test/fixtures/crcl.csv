@@ -1,0 +1,15 @@
+Statement,Header,Field Name,Field Value
+Statement,Data,Period,"June 1, 2026 - August 31, 2026"
+Account Information,Header,Field Name,Field Value
+Account Information,Data,Account,U1234567
+Mark-to-Market Performance Summary,Header,Asset Category,Symbol,Prior Quantity,Current Quantity,Prior Price,Current Price,Mark-to-Market P/L Position,Mark-to-Market P/L Transaction,Mark-to-Market P/L Commissions,Mark-to-Market P/L Other,Mark-to-Market P/L Total,Code
+Mark-to-Market Performance Summary,Data,Stocks,CRCL,0,1100,0,95,0,0,0,0,0,
+Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code
+Trades,Data,Order,Stocks,USD,CRCL,"2026-06-15, 10:00:00",100,80,81,-8000,-1,8001,0,100,O
+Trades,Data,Order,Stocks,USD,CRCL,"2026-07-08, 16:20:00",1000,90,92,-90000,0,90000,0,2000,A
+Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code
+Trades,Data,Order,Equity and Index Options,USD,CRCL 08JUL26 90 P,"2026-06-20, 10:00:00",-10,2,2.1,2000,-6.5,-1993.5,0,-100,O
+Trades,Data,Order,Equity and Index Options,USD,CRCL 08JUL26 90 P,"2026-07-08, 16:20:00",10,0,0,0,0,1993.5,1993.5,0,A
+Trades,Data,Order,Equity and Index Options,USD,CRCL 21AUG26 100 C,"2026-07-09, 10:00:00",-10,3,3.1,3000,-6.5,-2993.5,0,-100,O
+Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Quantity,Mult,Cost Price,Cost Basis,Close Price,Value,Unrealized P/L,Code
+Open Positions,Data,Summary,Stocks,USD,CRCL,1100,1,89.0918,98001,95,104500,6499,
