@@ -697,6 +697,7 @@ export default function Home() {
           </div>
         )}
 
+        {report && (
         <div className="text-[11px] text-gray-500 mt-3 space-y-1">
           <div>
             <span className="text-gray-400">Only since current shares were acquired</span>{" "}starts the clock at the buy or
@@ -720,6 +721,7 @@ export default function Home() {
             trading tool, not tax or investment advice.
           </div>
         </div>
+        )}
       </div>
 
       {!report && (
